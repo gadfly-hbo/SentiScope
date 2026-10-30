@@ -1,0 +1,9 @@
+{
+  "name": "sentiscope",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=25.0.0"
+  }
+}

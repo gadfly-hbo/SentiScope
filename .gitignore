@@ -1,14 +1,61 @@
-# macOS
+# OS and editor-local files
 .DS_Store
+._*
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 
-# env & secrets
+# Credentials and local environment; public examples contain placeholders only
 .env
 .env.*
+!.env.example
+!.env.*.example
+.npmrc
+auth.json
+credentials.json
+credentials.*.json
+secrets.json
+secrets.*.json
+*.pem
+*.key
+*.p12
+*.pfx
 
-# logs
+# Local SDK state and product workspaces; reusable assets belong in reviewed source
+/.pi/
+/.sentiscope/
+/.local/
+/data/
+/datasets/
+/workspaces/
+/runtime/
+/.runtime/
+/sessions/
+/logs/
+/artifacts/
+/outputs/
+/evidence/
 *.log
+*.session.jsonl
+*.sqlite
+*.sqlite3
+*.db
+*-wal
+*-shm
 
-# node (tech stack undecided, common entries)
+# Dependencies, caches and generated builds
 node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.cache/
+.codebase-memory/
+.playwright-cli/
+coverage/
 dist/
 build/
+*.tsbuildinfo
