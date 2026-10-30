@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SentiScope · 管理界面 · 切片一 UI Demo</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --line: #e5e7eb; --text: #1f2933; --muted: #6b7280;
+    --accent: #0f766e; --accent-soft: #ecfdf5;
+    --ok: #15803d; --ok-bg: #ecfdf3; --gap: #b45309; --gap-bg: #fff7ed;
+    --insuf: #6b7280; --insuf-bg: #f3f4f6; --fail: #b91c1c; --fail-bg: #fef2f2;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.6; }
+  .banner { background: #1f2933; color: #f9fafb; text-align: center; padding: 8px 16px; font-size: 12px; letter-spacing: .02em; }
+  .banner b { color: #fbbf24; font-weight: 600; }
+  header { display: flex; align-items: baseline; gap: 12px; padding: 16px 24px; background: var(--card); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 17px; font-weight: 700; }
+  header .sub { color: var(--muted); font-size: 12px; }
+  header .right { margin-left: auto; color: var(--muted); font-size: 12px; }
+  .layout { display: grid; grid-template-columns: 200px 1fr; min-height: calc(100vh - 96px); }
+  nav { background: var(--card); border-right: 1px solid var(--line); padding: 16px 0; }
+  nav button { display: block; width: 100%; text-align: left; padding: 10px 20px; border: 0; background: none; font-size: 14px; color: var(--muted); cursor: pointer; border-left: 3px solid transparent; }
+  nav button.active { color: var(--accent); background: var(--accent-soft); border-left-color: var(--accent); font-weight: 600; }
+  nav button:disabled { color: #b0b7bf; cursor: not-allowed; }
+  nav .section { padding: 16px 20px 6px; font-size: 11px; color: #9ca3af; }
+  main { padding: 24px; }
+  .view { display: none; }
+  .view.active { display: block; }
+  h2 { font-size: 16px; margin-bottom: 4px; }
+  .desc { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .stat .num { font-size: 26px; font-weight: 700; line-height: 1.3; }
+  .stat .label { color: var(--muted); font-size: 12px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .finding-title { font-weight: 600; margin-bottom: 6px; }
+  .kv { display: grid; grid-template-columns: 88px 1fr; gap: 2px 12px; font-size: 13px; margin: 10px 0; }
+  .kv dt { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  th { background: #fafbfc; color: var(--muted); font-weight: 500; font-size: 12px; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: #f8fafc; }
+  tbody tr:last-child td { border-bottom: 0; }
+  .chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .chip.ok { color: var(--ok); background: var(--ok-bg); }
+  .chip.gap { color: var(--gap); background: var(--gap-bg); }
+  .chip.insuf { color: var(--insuf); background: var(--insuf-bg); }
+  .chip.fail { color: var(--fail); background: var(--fail-bg); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .muted { color: var(--muted); }
+  .card h3 { font-size: 14px; margin-bottom: 8px; }
+  .card + .card { margin-top: 12px; }
+  .rule { margin-top: 12px; }
+  .checks { list-style: none; margin: 8px 0; }
+  .checks li { display: flex; gap: 8px; padding: 5px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
+  .checks li:last-child { border-bottom: 0; }
+  .checks .mark { font-weight: 700; width: 18px; flex-shrink: 0; }
+  .mark.pass { color: var(--ok); } .mark.block { color: var(--fail); } .mark.hold { color: var(--gap); }
+  .overlay { position: fixed; inset: 0; background: rgba(15,23,42,.35); display: none; }
+  .overlay.open { display: block; }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 560px; max-width: 92vw; background: var(--bg); border-left: 1px solid var(--line); overflow-y: auto; transform: translateX(100%); transition: transform .18s; padding: 20px; }
+  .drawer.open { transform: translateX(0); }
+  .drawer-head { display: flex; align-items: start; gap: 12px; margin-bottom: 12px; }
+  .drawer-head h3 { font-size: 15px; flex: 1; }
+  .close { border: 1px solid var(--line); background: var(--card); border-radius: 6px; padding: 2px 10px; cursor: pointer; color: var(--muted); }
+  .placeholder { border: 1px dashed var(--line); border-radius: 10px; padding: 40px 24px; text-align: center; color: var(--muted); background: var(--card); }
+  footer { padding: 16px 24px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); background: var(--card); }
+  footer b { color: var(--text); font-weight: 600; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } nav { display: flex; overflow-x: auto; } nav .section { display: none; } .cards { grid-template-columns: repeat(2, 1fr); } .grid2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="banner">UI Demo · <b>全部为虚构合成数据</b> · 仅为界面意图确认 · 不连接真实系统 · 切片一不含投递</div>
+<header>
+  <h1>SentiScope</h1><span class="sub">管理界面 · 切片一：证明读得准</span>
+  <span class="right">合成 BI 模拟源 A · 只读 · 阶段 1（非常驻）</span>
+</header>
+<div class="layout">
+  <nav id="nav">
+    <div class="section">观察</div>
+    <button data-view="overview" class="active">观察总览</button>
+    <button data-view="runs">运行记录</button>
+    <button data-view="evidence">证据</button>
+    <div class="section">配置</div>
+    <button data-view="sources">来源与规则</button>
+    <div class="section">投递</div>
+    <button data-view="delivery">投递状态（切片二）</button>
+  </nav>
+  <main>
+    <section id="overview" class="view active">
+      <h2>观察总览</h2>
+      <p class="desc">本轮检查：2026-10-02 08:10（抓取时间）· 共 8 次观察 · 每次运行必留结果</p>
+      <div class="cards" id="stats"></div>
+      <div class="grid2">
+        <div class="card">
+          <h3>最新合格差距（待投递 · 切片二启用）</h3>
+          <div class="finding-title">华东区域 9 月收入低于月度目标 120 万元</div>
+          <dl class="kv">
+            <dt>观察事实</dt><dd>已结期 2026-09 · 实际 880 万 / 目标 1,000 万 · 达成率 88%</dd>
+            <dt>触发规则</dt><dd>rule-east-revenue@v1：已结期收入低于目标超过 10%</dd>
+            <dt>证据</dt><dd class="mono">sha256:8f3a…c21e · 业务刷新 10-02 08:00 · 抓取 08:10</dd>
+            <dt>未知项</dt><dd>原因未查明；建议在 OptraCall 核查收入构成与订单变化（非已启动任务）</dd>
+          </dl>
+          <span class="muted">不自动建 Case、不自动建 Project（本切片只读管道）。</span>
+        </div>
+        <div class="card">
+          <h3>Agent 探索循环（本轮）</h3>
+          <dl class="kv">
+            <dt>疑点补读</dt><dd>1 次：OBS-07 检测到筛选漂移后重取过滤条件快照</dd>
+            <dt>预算</dt><dd>步数 2 / 5；补读仅限授权工具与当前来源</dd>
+            <dt>停止行为</dt><dd>信息不足即停止并留未知项，不编造口径</dd>
+            <dt>模型</dt><dd>真实模型调用未启用（需单独授权）；本 Demo 为合成演示</dd>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <section id="runs" class="view">
+      <h2>运行记录</h2>
+      <p class="desc">四态结果：正常 / 合格差距 / 证据不足 / 采集失败。点击行查看校验链、证据与未知项。对应规格样例 OBS-01～07。</p>
+      <table>
+        <thead><tr><th>时间</th><th>指标</th><th>实体 · 周期</th><th>状态</th><th>原因</th><th>证据</th></tr></thead>
+        <tbody id="run-rows"></tbody>
+      </table>
+    </section>
+
+    <section id="evidence" class="view">
+      <h2>证据</h2>
+      <p class="desc">原始快照不可变、只追加；SHA-256 防篡改；双时间戳（业务刷新 / 抓取）；入板时间切片二补齐。</p>
+      <table>
+        <thead><tr><th>快照</th><th>SHA-256</th><th>业务刷新</th><th>抓取时间</th><th>来源定位</th></tr></thead>
+        <tbody id="evidence-rows"></tbody>
+      </table>
+    </section>
+
+    <section id="sources" class="view">
+      <h2>来源与规则</h2>
+      <p class="desc">声明式配置，版本化；授权范围显式。本 Demo 仅展示结构。</p>
+      <div class="card">
+        <h3>来源：合成 BI 模拟源 A</h3>
+        <dl class="kv">
+          <dt>类型</dt><dd>loopback 模拟驾驶舱（结构化 JSON 入口，页面兜底未启用）</dd>
+          <dt>权限</dt><dd>只读；无真实凭据；数据全部为合成 fixture</dd>
+          <dt>范围</dt><dd>驾驶舱 dash-east-ops；区域=华东/华南/西南；不含导出经营动作</dd>
+          <dt>节奏</dt><dd>手动触发 / 定时器（cron 级调度后置）</dd>
+        </dl>
+      </div>
+      <div class="card rule">
+        <h3>规则卡：rule-east-revenue@v1</h3>
+        <dl class="kv">
+          <dt>指标</dt><dd>metric.revenue.monthly（月收入，稳定标识）</dd>
+          <dt>实体·周期</dt><dd>华东区域 · 自然月 · 已结期判定 · Asia/Shanghai</dd>
+          <dt>方向</dt><dd>越高越好；达成率 = 实际 / 目标</dd>
+          <dt>触发依据</dt><dd>已结期且差距超过 10% → 合格差距</dd>
+          <dt>未结期</dt><dd>无目标轨迹时只记现状，不判不达标</dd>
+        </dl>
+      </div>
+      <div class="card rule">
+        <h3>规则卡：rule-wait-time@v1（越低越好）</h3>
+        <dl class="kv">
+          <dt>指标</dt><dd>metric.support.wait_seconds（客服平均等待时长）</dd>
+          <dt>方向</dt><dd>越低越好；目标 ≤ 30 秒；零分母禁止套达成率，标不可计算</dd>
+          <dt>触发依据</dt><dd>已结期且超出目标超过 20% → 合格差距</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section id="delivery" class="view">
+      <h2>投递状态</h2>
+      <p class="desc">切片二启用。本切片发现只入观察存储，不投递。</p>
+      <div class="placeholder">
+        <p><b>切片二：证明能自动入板</b></p>
+        <p>持久待投递队列 · 待投递 / 已送达 / 失败原因 · 探活与幂等重试 · 手动补推按钮</p>
+        <p class="muted">本区域当前为占位，不产生任何投递动作。</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="overlay" id="overlay"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-head"><h3 id="d-title"></h3><button class="close" id="d-close">关闭</button></div>
+  <div id="d-status" style="margin-bottom:8px"></div>
+  <div class="card"><h3>观察事实</h3><dl class="kv" id="d-facts"></dl></div>
+  <div class="card"><h3>校验链（逐项留痕）</h3><ul class="checks" id="d-checks"></ul></div>
+  <div class="card"><h3>证据</h3><dl class="kv" id="d-evidence"></dl></div>
+  <div class="card"><h3>未知与下一步</h3><p id="d-unknown" style="font-size:13px"></p></div>
+</aside>
+
+<footer>
+  本 Demo 待确认点：<b>布局与信息层级</b> · <b>四态状态与原因文案</b> · <b>校验链与证据下钻粒度</b> · <b>投递区占位边界</b>。确认后方可实施界面部分（UI Gate）。全部数据为合成示例，不代表真实经营情况。
+</footer>
+
+<script>
+const STATUS = {
+  ok:    { label: '正常',     cls: 'ok' },
+  gap:   { label: '合格差距', cls: 'gap' },
+  insuf: { label: '证据不足', cls: 'insuf' },
+  fail:  { label: '采集失败', cls: 'fail' },
+};
+const C = (mark, name, note) => ({ mark, name, note });
+const runs = [
+  { id:'OBS-01', time:'10-02 08:10', metric:'月收入', entity:'华东 · 2026-09（已结期）', status:'ok', reason:'达标 105%，无差距',
+    facts:{ '实际 / 目标':'1,050 万 / 1,000 万', '达成率':'105%', '方向':'越高越好', '规则':'rule-east-revenue@v1' },
+    checks:[ C('pass','实体一致','华东 = 配置实体'), C('pass','周期一致','自然月，已结期'), C('pass','单位一致','万元'), C('pass','过滤条件','与配置快照一致'), C('pass','刷新有效','业务刷新 10-02 08:00 ≤ 当前'), C('pass','触发判定','105% ≥ 90% 阈值，不触发') ],
+    ev:{ sha:'a91f…77d0', locator:'dash-east-ops / metric.revenue.monthly / 华东 / 2026-09' },
+    unknown:'无需处理；本轮仅记录观察。' },
+  { id:'OBS-02', time:'10-02 08:10', metric:'月收入', entity:'华东 · 2026-09（已结期）', status:'gap', reason:'低于目标 12%，超 10% 阈值',
+    facts:{ '实际 / 目标':'880 万 / 1,000 万', '达成率':'88%（差额 −120 万）', '方向':'越高越好', '规则':'rule-east-revenue@v1：已结期低于目标超 10%' },
+    checks:[ C('pass','实体一致','华东'), C('pass','周期一致','自然月，已结期'), C('pass','单位一致','万元'), C('pass','过滤条件','一致'), C('pass','刷新有效','10-02 08:00'), C('pass','触发判定','差距 12% > 10% → 合格差距') ],
+    ev:{ sha:'8f3a…c21e', locator:'dash-east-ops / metric.revenue.monthly / 华东 / 2026-09' },
+    unknown:'仅证实收入差距，原因未查明；假设“渠道转化率下降”标为待验证。切片二投递后由 OptraCall 承接评估。' },
+  { id:'OBS-03', time:'10-02 08:10', metric:'成本率', entity:'西南 · 2026-09', status:'insuf', reason:'数据过期：业务刷新停留在 09-28',
+    facts:{ '实际 / 目标':'—（不采用旧值比较）', '刷新检查':'期望 ≥ 10-02，实际 09-28', '规则':'rule-sw-cost@v1' },
+    checks:[ C('pass','实体一致','西南'), C('pass','周期一致','自然月'), C('block','刷新有效','数据自 09-28 未刷新 → 过期'), C('hold','后续环节','不比较、不判定') ],
+    ev:{ sha:'e07b…19aa', locator:'dash-east-ops / metric.cost_rate / 西南（含过期标记）' },
+    unknown:'记录数据质量问题，等待有效刷新后重读；旧值不当作新的经营差距。' },
+  { id:'OBS-04', time:'10-02 08:10', metric:'月收入', entity:'华南 · 2026-09', status:'insuf', reason:'单位不一致（元 vs 万元）、周期不一致',
+    facts:{ '实际 / 目标':'源返回 8,800,000（元）/ 配置单位万元', '周期':'源为自然周，配置为自然月' },
+    checks:[ C('pass','实体一致','华南'), C('block','周期一致','自然周 ≠ 自然月'), C('block','单位一致','元 ≠ 万元，且换算口径未约定'), C('hold','后续环节','拒绝直接比较，记录缺失口径') ],
+    ev:{ sha:'c44d…0b7f', locator:'dash-east-ops / metric.revenue.monthly / 华南（原始字段与单位标注）' },
+    unknown:'缺失口径待来源方确认；不生成误导性差距，不做静默换算。' },
+  { id:'OBS-05', time:'10-02 08:10', metric:'月收入', entity:'全公司 · 2026-10（未结期）', status:'ok', reason:'未结期无轨迹：仅记录现状，不判不达标',
+    facts:{ '实际 / 目标':'累计 6,200 万 / 全期目标 9,000 万', '达成率':'不计算（未结期、无目标轨迹）', '规则':'rule-co-revenue@v1' },
+    checks:[ C('pass','实体一致','全公司'), C('pass','周期语义','未结期'), C('pass','轨迹检查','无认可同期目标轨迹 → 仅现状'), C('hold','触发判定','不做期末预测、不判不达标') ],
+    ev:{ sha:'72ce…5d31', locator:'dash-east-ops / metric.revenue.monthly / 全公司 / 2026-10' },
+    unknown:'现状观察留档；如业务补充认可轨迹，下轮可按轨迹判断进度偏离。' },
+  { id:'OBS-06', time:'10-02 08:10', metric:'客服平均等待时长', entity:'华东 · 2026-09（已结期）', status:'gap', reason:'越低越好：46s 超目标 53%',
+    facts:{ '实际 / 目标':'46 秒 / ≤ 30 秒', '差距':'+16 秒（+53%，超 20% 阈值）', '方向':'越低越好', '规则':'rule-wait-time@v1' },
+    checks:[ C('pass','方向判定','越低越好，超出为差距'), C('pass','刷新有效','10-02 08:00'), C('pass','分母检查','同页转化率指标分母订单=0 → 标不可计算，不产生伪达成率'), C('pass','触发判定','超 53% > 20% → 合格差距') ],
+    ev:{ sha:'b10a…9e88', locator:'dash-east-ops / metric.support.wait_seconds / 华东 / 2026-09' },
+    unknown:'等待时长差距已证实，瓶颈原因未知；零分母指标留不可计算记录。' },
+  { id:'OBS-07', time:'10-02 08:10', metric:'月收入', entity:'华东 · 2026-09', status:'insuf', reason:'筛选漂移：默认范围变为“华东+华中”',
+    facts:{ '范围检查':'配置=华东；快照=华东+华中', 'Agent 动作':'补读过滤条件快照 1 次（授权工具内）', '规则':'rule-east-revenue@v1' },
+    checks:[ C('block','过滤条件','默认筛选漂移 → 范围不一致'), C('hold','后续环节','暂停比较，保留待核实记录') ],
+    ev:{ sha:'d5f2…4c06', locator:'dash-east-ops / 过滤条件快照（前后两份）' },
+    unknown:'范围变化待核实；Agent 已补读一次仍无法确认一致口径，留未知项不继续扩权。' },
+  { id:'RUN-08', time:'10-02 08:10', metric:'月收入', entity:'华中 · 2026-09', status:'fail', reason:'采集失败：合成源读取超时',
+    facts:{ '读取结果':'超时，无有效响应', '重试':'按观察节奏下轮重读（非投递重试）' },
+    checks:[ C('block','读取','超时'), C('hold','后续环节','不判定、不猜测数值') ],
+    ev:{ sha:'—', locator:'无快照（未取到数据）；失败事件留痕' },
+    unknown:'采集失败为一等结果；恢复后按原观察身份重读，不生成差距。' },
+];
+const stats = [
+  { label:'正常', num:2, cls:'ok' }, { label:'合格差距', num:2, cls:'gap' },
+  { label:'证据不足', num:3, cls:'insuf' }, { label:'采集失败', num:1, cls:'fail' },
+];
+document.getElementById('stats').innerHTML = stats.map(s =>
+  `<div class="card stat"><div class="num" style="color:var(--${s.cls === 'ok' ? 'ok' : s.cls === 'gap' ? 'gap' : s.cls === 'insuf' ? 'insuf' : 'fail'})">${s.num}</div><div class="label">${s.label}</div></div>`).join('');
+
+document.getElementById('run-rows').innerHTML = runs.map((r, i) => `
+  <tr data-i="${i}"><td class="mono">${r.time}</td><td>${r.metric}</td><td>${r.entity}</td>
+  <td><span class="chip ${STATUS[r.status].cls}">${STATUS[r.status].label}</span></td>
+  <td>${r.reason}</td><td class="mono muted">${r.ev.sha === '—' ? '—' : '快照'}</td></tr>`).join('');
+
+document.getElementById('evidence-rows').innerHTML = runs.filter(r => r.ev.sha !== '—').map(r => `
+  <tr><td>${r.id} · ${r.metric}</td><td class="mono">${r.ev.sha}</td><td class="mono">2026-10-02 08:00</td><td class="mono">2026-10-02 08:10</td><td class="muted">${r.ev.locator}</td></tr>`).join('');
+
+const drawer = document.getElementById('drawer'), overlay = document.getElementById('overlay');
+function openRun(i) {
+  const r = runs[i];
+  document.getElementById('d-title').textContent = `${r.id} · ${r.metric} · ${r.entity}`;
+  document.getElementById('d-status').innerHTML = `<span class="chip ${STATUS[r.status].cls}">${STATUS[r.status].label}</span> <span class="muted">${r.reason}</span>`;
+  document.getElementById('d-facts').innerHTML = Object.entries(r.facts).map(([k,v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  document.getElementById('d-checks').innerHTML = r.checks.map(c =>
+    `<li><span class="mark ${c.mark}">${c.mark === 'pass' ? '✓' : c.mark === 'block' ? '✕' : '‖'}</span><span><b>${c.name}</b>　<span class="muted">${c.note}</span></span></li>`).join('');
+  document.getElementById('d-evidence').innerHTML =
+    `<dt>快照 SHA-256</dt><dd class="mono">${r.ev.sha}</dd><dt>业务刷新</dt><dd class="mono">2026-10-02 08:00</dd><dt>抓取时间</dt><dd class="mono">2026-10-02 08:10</dd><dt>入板时间</dt><dd class="muted">切片二补齐</dd><dt>来源定位</dt><dd>${r.ev.locator}</dd>`;
+  document.getElementById('d-unknown').textContent = r.unknown;
+  drawer.classList.add('open'); overlay.classList.add('open');
+}
+function closeDrawer() { drawer.classList.remove('open'); overlay.classList.remove('open'); }
+document.getElementById('run-rows').addEventListener('click', e => {
+  const tr = e.target.closest('tr[data-i]'); if (tr) openRun(Number(tr.dataset.i));
+});
+document.getElementById('d-close').addEventListener('click', closeDrawer);
+overlay.addEventListener('click', closeDrawer);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+
+document.getElementById('nav').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-view]'); if (!btn) return;
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b === btn));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === btn.dataset.view));
+  closeDrawer();
+});
+</script>
+</body>
+</html>

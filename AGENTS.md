@@ -2,7 +2,7 @@
 
 开始任务、修改规范或准备交付时，先读 [工程规范](docs/engineering-workflow.md)；涉及产品方向与首期范围时，再读 [自主探索 Agent 产品讨论稿 v0.1](OptraCall_自主探索Agent_产品讨论稿_v0.1.md)；涉及 pi-coding-agent 能力复用、自建清单或部署拓扑时，读 [技术盘点 v0.1](SentiScope_技术盘点_pi-coding-agent与部署拓扑_v0.1.md)。工程规范是开发流程的唯一详细来源。
 
-当前无已启动的 openspec 变更：仓库处于工程初始化阶段（规范与结构已建立，尚无可运行代码）。首个变更候选为讨论稿 §7 切片一"证明读得准"，启动时在工程规范 §1 登记规格与授权。未获用户显式授权前不连接真实业务系统。
+当前变更为 [slice1-observation-core](openspec/changes/slice1-observation-core/spec.md)（切片一"证明读得准"，SPEC_DRAFT）：最小可运行宿主＋合成 BI 源＋口径校验＋证据快照＋观察存储＋只读管理界面。[UI Demo](openspec/changes/slice1-observation-core/clickable/index.html) 待用户确认后方可实施界面部分；真实模型调用需单独授权。上位方案为 [整体产品方案 v0.1](docs/SentiScope_整体产品方案_v0.1.md)。未获用户显式授权前不连接真实业务系统。
 
 已确认的工程边界（详见工程规范 §1）：
 
