@@ -1,6 +1,6 @@
 # slice1-observation-core 结果记录
 
-状态：实施中（规格与 UI Demo 已于 2026-10-30 获用户确认；实施分支 work/qoder/slice1-observation-core）。
+状态：已完成（用户验收通过 2026-10-30；squash 合并 main，提交 987ef9c；分支已清理）。
 
 已发生的事实记录：
 
@@ -41,10 +41,11 @@
 
 ## Git / CI
 
-- 分支 work/qoder/slice1-observation-core：实施提交 58f10ab → 复核修复 70c1414 → CI 审计修复 f4bee11；PR #1（https://github.com/gadfly-hbo/SentiScope/pull/1）已建，未合并。
-- 远端 CI：run 41000752676 failure（YAML `with:` 缺失，0s）→ 修复；run 41002138316 failure（npm audit 高危：pi 依赖 undici 8.x）→ 按 OptraCall 先例 overrides 强制 undici 8.12.2；run 41002341142 **success**（Node 25.9.0，npm ci + check 30/30 + audit 0 漏洞，PR head f4bee11）。
-- 待办：用户验收后获授权 squash 合并 main 并安全快进；合并后 main push CI 另行核对。
+- 分支 work/qoder/slice1-observation-core：实施提交 58f10ab → 复核修复 70c1414 → CI 审计修复 f4bee11 → 记录与启动入口修复（bd0b843/56082cd/44d513c）；PR #1（https://github.com/gadfly-hbo/SentiScope/pull/1）。
+- 远端 CI：run 41000752676 failure（YAML `with:` 缺失）→ 修复；run 41002138316 failure（undici 高危审计）→ overrides 8.12.2；run 41002341142 success（PR head f4bee11）；PR 最终 head 44d513c 检查 pass（run 41004274325）。
+- 2026-10-30 用户验收通过并授权 squash 合并：main 提交 **987ef9c**（PR #1 MERGED 04:48:36Z），本地 main 安全快进，本地与远端分支已删除。main push CI run 41004945756 另见下条记录。
+- 收尾记录（本节、spec 状态、AGENTS.md 与规范 §1 登记）随后续 main 提交补齐。
 
 ## 用户验收
 
-（待用户对固定候选的适用验收）
+- 2026-10-30 用户在本机（MacBook）实际试用并确认通过：双击 `启动 SentiScope.command` 一键启动（含权限位、自动唤起、复用实例三轮修复）、管理界面金路径、四态观察与证据查看。用户明确授权 squash 合并 PR #1 进 main。

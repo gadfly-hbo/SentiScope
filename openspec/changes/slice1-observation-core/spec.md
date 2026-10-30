@@ -1,6 +1,6 @@
 # slice1-observation-core：切片一"证明读得准"
 
-日期 2026-10-30　状态 CONFIRMED（用户已确认规格与 UI Demo，2026-10-30；实施进行中）
+日期 2026-10-30　状态 已完成（LOCAL_VERIFIED；用户验收通过，2026-10-30 squash 合并 main，提交 987ef9c）
 
 未决问题落定（随确认生效）：1 观察存储用 SQLite（`node:sqlite`）；2 管理界面用 loopback Web（同 OptraCall 形态）；3 合成源用 loopback HTTP 模拟驾驶舱；4 真实模型调用**保持未授权**，会话探针不调用模型，如实施中需要须单独授权。
 

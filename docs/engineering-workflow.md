@@ -4,7 +4,7 @@
 
 ## 1. 当前范围与依据
 
-当前变更：[slice1-observation-core](../openspec/changes/slice1-observation-core/spec.md)（切片一"证明读得准"，SPEC_DRAFT）。UI Demo 确认与规格批准为实施前置；真实模型调用与真实业务系统连接均未授权。每项变更的规格与验收约束实现和测试；后续变更在本节滚动登记。
+上一变更：[slice1-observation-core](../openspec/changes/slice1-observation-core/spec.md)（切片一"证明读得准"）已完成：用户验收通过，2026-10-30 squash 合并 main（提交 987ef9c）。下一变更候选为切片二 slice2-delivery。每项变更的规格与验收约束实现和测试；后续变更在本节滚动登记。
 
 方向依据为三份文档，冲突时以最新明确用户决定为准，并在受影响实施前同步规格：
 

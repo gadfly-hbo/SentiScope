@@ -2,7 +2,7 @@
 
 开始任务、修改规范或准备交付时，先读 [工程规范](docs/engineering-workflow.md)；涉及产品方向与首期范围时，再读 [自主探索 Agent 产品讨论稿 v0.1](OptraCall_自主探索Agent_产品讨论稿_v0.1.md)；涉及 pi-coding-agent 能力复用、自建清单或部署拓扑时，读 [技术盘点 v0.1](SentiScope_技术盘点_pi-coding-agent与部署拓扑_v0.1.md)。工程规范是开发流程的唯一详细来源。
 
-当前变更为 [slice1-observation-core](openspec/changes/slice1-observation-core/spec.md)（切片一"证明读得准"，CONFIRMED，实施中，分支 work/qoder/slice1-observation-core）：最小可运行宿主＋合成 BI 源＋口径校验＋证据快照＋观察存储＋只读管理界面。UI Demo 与规格已获用户确认（2026-10-30）；真实模型调用保持未授权，须单独授权。上位方案为 [整体产品方案 v0.1](docs/SentiScope_整体产品方案_v0.1.md)。未获用户显式授权前不连接真实业务系统。
+上一变更 [slice1-observation-core](openspec/changes/slice1-observation-core/spec.md)（切片一"证明读得准"）已完成：用户验收通过，2026-10-30 squash 合并 main（提交 987ef9c，PR #1），规格与[结果记录](openspec/changes/slice1-observation-core/result.md)保留。下一变更候选为切片二 slice2-delivery（持久待投递队列＋Case 接入＋离线补投＋投递状态 UI），启动前按整体产品方案 §7 核对 OptraCall 侧 case-auto-source 契约扩展的前置关系。未获用户显式授权前不连接真实业务系统；真实模型调用保持未授权。
 
 已确认的工程边界（详见工程规范 §1）：
 
