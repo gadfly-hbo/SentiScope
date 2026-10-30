@@ -43,8 +43,8 @@
 
 - 分支 work/qoder/slice1-observation-core：实施提交 58f10ab → 复核修复 70c1414 → CI 审计修复 f4bee11 → 记录与启动入口修复（bd0b843/56082cd/44d513c）；PR #1（https://github.com/gadfly-hbo/SentiScope/pull/1）。
 - 远端 CI：run 41000752676 failure（YAML `with:` 缺失）→ 修复；run 41002138316 failure（undici 高危审计）→ overrides 8.12.2；run 41002341142 success（PR head f4bee11）；PR 最终 head 44d513c 检查 pass（run 41004274325）。
-- 2026-10-30 用户验收通过并授权 squash 合并：main 提交 **987ef9c**（PR #1 MERGED 04:48:36Z），本地 main 安全快进，本地与远端分支已删除。main push CI run 41004945756 另见下条记录。
-- 收尾记录（本节、spec 状态、AGENTS.md 与规范 §1 登记）随后续 main 提交补齐。
+- 2026-10-30 用户验收通过并授权 squash 合并：main 提交 **987ef9c**（PR #1 MERGED 04:48:36Z），本地 main 安全快进，本地与远端分支已删除。
+- main push CI run 41004945756 **success**（987ef9c，Node 25.9.0，check + audit 全过）。
 
 ## 用户验收
 
