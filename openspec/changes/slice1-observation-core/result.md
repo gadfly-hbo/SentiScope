@@ -18,6 +18,7 @@
   - `skills/caliber-validation/SKILL.md`（官方 SKILL.md 规范，被探针发现并注入会话）。
   - `src/ui/index.html`（按已确认 Demo 实现的只读管理界面，数据来自 API）、`scripts/start.mjs` + `启动 SentiScope.command`（双击启动，非常驻）、`.github/workflows/check.yml`（单任务 CI：npm ci → check → 高危审计）。
   - 配置与合成数据：`config/sources.json`（1 来源，readOnly 硬校验）、`config/rules.json`（9 规则）、`fixtures/dash-east-ops/`（8 样例 + slow）。
+  - 启动入口修复（试用反馈）：.command 补可执行位（bd0b843）；启动成功自动唤起前端（56082cd，SENTISCOPE_NO_OPEN=1 可关）；一键启动复用已运行实例，消除 EADDRINUSE（再次双击只打开界面不重启，已实测两条路径）。
 
 ## 检查与验证
 
