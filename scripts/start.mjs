@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // SentiScope 切片一启动入口：合成 BI 模拟源 + loopback 管理宿主 + 会话探针。
+import { execFile } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -36,6 +37,12 @@ try {
 }
 
 console.log('[SentiScope] Ctrl+C 停止（非常驻，阶段 1）。');
+
+if (process.platform === 'darwin' && process.env.SENTISCOPE_NO_OPEN !== '1') {
+  execFile('open', [host.url], (err) => {
+    if (err) console.warn(`[SentiScope] 浏览器唤起失败：${err.message}`);
+  });
+}
 const shutdown = () => {
   host.server.close();
   sourceServer.close();
