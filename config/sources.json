@@ -1,0 +1,11 @@
+{
+  "sources": [
+    {
+      "id": "synthetic-a",
+      "kind": "http",
+      "baseUrl": "http://127.0.0.1:4181",
+      "readOnly": true,
+      "scope": { "dashboard": "dash-east-ops", "entities": ["华东", "华南", "华中", "西南", "全公司"] }
+    }
+  ]
+}

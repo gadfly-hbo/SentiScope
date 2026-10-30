@@ -1,0 +1,10 @@
+{
+  "_synthetic": true,
+  "metricId": "metric.cost_rate.monthly",
+  "entity": "西南",
+  "period": { "kind": "month", "label": "2026-09", "closed": true },
+  "value": 62,
+  "unit": "%",
+  "filters": { "region": ["西南"] },
+  "refreshedAt": "@stale"
+}

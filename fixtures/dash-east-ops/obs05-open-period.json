@@ -1,0 +1,10 @@
+{
+  "_synthetic": true,
+  "metricId": "metric.revenue.monthly",
+  "entity": "全公司",
+  "period": { "kind": "month", "label": "2026-10", "closed": false },
+  "value": 6200,
+  "unit": "万元",
+  "filters": { "region": ["全公司"] },
+  "refreshedAt": "@fresh"
+}
