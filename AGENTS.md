@@ -11,6 +11,6 @@
 - 与 OptraCall 的耦合收敛为一条 Case 投递契约；对 OptraCall 的任何修改走其 openspec 变更流程。
 - 部署两阶段：阶段 1 同机（MacBook）、非常驻可开关；阶段 2 跨机、SentiScope 常驻。阶段 1 验证全部核心机制。
 
-执行者分工：Qoder 为单执行者（Host、pi-coding-agent 接入、skills 与全部领域件），独立复核 Agent 检查固定候选且不得是作者；Mac mini 开发，MacBook 用户试用与阶段 1 联动测试（不开发、不回推）；用户负责方向、边界与验收。引入新执行者须用户确认并更新本入口与规范。
+执行者分工：Qoder 为单执行者（Host、pi-coding-agent 接入、skills 与全部领域件），独立复核 Agent 检查固定候选且不得是作者；开发与试用均在 MacBook 本机（阶段 1 同机拓扑，Mac mini 不参与）；用户负责方向、边界与验收。引入新执行者须用户确认并更新本入口与规范。
 
 每次执行以已授权范围和实际证据为准；历史参考资料不覆盖本项目最新确认，也不授予旧任务权限。治理谱系：JuanerAI → OptraCall 工程规范 v0.9 → 本项目工程规范 v0.1。

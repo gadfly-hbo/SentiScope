@@ -25,6 +25,6 @@ tests/           测试
 
 ## 开发
 
-开始任务前读 [AGENTS.md](AGENTS.md) 与 [工程规范](docs/engineering-workflow.md)。Mac mini 为开发环境，MacBook 为测试环境；阶段 1 与 OptraCall 同机联动，两者都非常驻、可开启关闭。
+开始任务前读 [AGENTS.md](AGENTS.md) 与 [工程规范](docs/engineering-workflow.md)。开发与试用均在 MacBook 本机；阶段 1 与 OptraCall 同机联动，两者都非常驻、可开启关闭。
 
 本仓库公开：不含凭据与真实经营数据，样例使用合成材料。
