@@ -40,7 +40,7 @@
 
 ## 允许修改路径
 
-`src/`、`skills/`、`tests/`、`scripts/`、`docs/`、`openspec/changes/slice1-observation-core/`、`package.json`（锁定 `@earendil-works/pi-coding-agent@1.4.0` 及必要依赖）、`.github/workflows/`（建立单任务 CI）、`AGENTS.md`（当前变更登记更新）。
+`src/`、`skills/`、`tests/`、`scripts/`、`config/`、`fixtures/`、`docs/`、`openspec/changes/slice1-observation-core/`、`tsconfig.json`、`package.json`（锁定 `@earendil-works/pi-coding-agent@1.4.0` 及必要依赖）、`.github/workflows/`（建立单任务 CI）、根目录启动入口（`启动 SentiScope.command`）、`AGENTS.md`（当前变更登记更新）。（实施时补齐 config/、fixtures/、tsconfig、启动入口，随独立复核建议同步本清单。）
 
 ## 关键边界
 

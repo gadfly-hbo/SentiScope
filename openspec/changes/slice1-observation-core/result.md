@@ -30,12 +30,18 @@
 
 ## 独立复核
 
-（待执行：完整候选收尾时固定候选并交独立复核 Agent，非作者）
+- 2026-10-30 独立复核完成（非作者独立上下文 Agent，完整报告 `.local/independent-review-slice1.md`，源码只读，报告写隔离位置）。复核范围：候选 58f10ab 复跑 `npm run check`（30/30，exit 0）、OBS-01～07 断言区分度逐条核对、12 组对抗性抽查（直调 pipeline/evidence）、边界核查（readOnly 硬校验、append-only、无 UPDATE/DELETE、无投递路径、测试仅 127.0.0.1）、`npm start` 真实路径独立复验（探针通过、9 条四态 {ok:2,gap:2,insufficient:4,failed:1}、8 证据、二轮身份稳定、SQLite 18 行）。
+- 发现与处置：
+  - 【必须修复】check.yml 的 `ref`/`persist-credentials` 未包进 `with:`，远端 CI 解析失败（run 41000752676，0s failure）→ 已修复为 OptraCall 同款 `with:` 包裹；修复后重新触发远端 CI 验证（结果见 Git/CI 节）。
+  - 【建议】spec 允许修改路径清单滞后（缺 config/、fixtures/、tsconfig.json、启动 .command）→ 已同步本规格。
+  - 【建议】expectedFilters 可缺失，缺时过滤漂移不拦截 → 记录为已知限制，随真实来源接入（切片三前）补默认过滤基线；不改本切片行为。
+  - 【备注】failed 观察身份随机（无稳定周期可锚定，切片二投递不涉及 failed）、未来 refreshedAt 放行（真实来源接入时按来源时钟收紧）等 7 项，见报告。
+- 结论：作者修复 CI 配置后重验受影响范围（仅 YAML 与文档，src/tests 未动，30/30 不受影响）。
 
 ## Git / CI
 
-- 2026-10-30 分支 work/qoder/slice1-observation-core 提交并推送（见提交记录）；未合并 main，待独立复核与适用验收。
-- CI 单任务已建立（.github/workflows/check.yml）；首次运行结果待记录。
+- 2026-10-30 分支 work/qoder/slice1-observation-core 提交并推送；实施提交 58f10ab，CI 修复与规格同步随后续提交；未合并 main，待用户验收与获授权合并。
+- 首次远端 CI run 41000752676 因 YAML 缩进错误 failure（0s）；修复后重触发结果待记录。
 
 ## 用户验收
 
