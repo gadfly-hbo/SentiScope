@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# env & secrets
+.env
+.env.*
+
+# logs
+*.log
+
+# node (tech stack undecided, common entries)
+node_modules/
+dist/
+build/
