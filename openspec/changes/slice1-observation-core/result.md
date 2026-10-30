@@ -40,8 +40,9 @@
 
 ## Git / CI
 
-- 2026-10-30 分支 work/qoder/slice1-observation-core 提交并推送；实施提交 58f10ab，CI 修复与规格同步随后续提交；未合并 main，待用户验收与获授权合并。
-- 首次远端 CI run 41000752676 因 YAML 缩进错误 failure（0s）；修复后重触发结果待记录。
+- 分支 work/qoder/slice1-observation-core：实施提交 58f10ab → 复核修复 70c1414 → CI 审计修复 f4bee11；PR #1（https://github.com/gadfly-hbo/SentiScope/pull/1）已建，未合并。
+- 远端 CI：run 41000752676 failure（YAML `with:` 缺失，0s）→ 修复；run 41002138316 failure（npm audit 高危：pi 依赖 undici 8.x）→ 按 OptraCall 先例 overrides 强制 undici 8.12.2；run 41002341142 **success**（Node 25.9.0，npm ci + check 30/30 + audit 0 漏洞，PR head f4bee11）。
+- 待办：用户验收后获授权 squash 合并 main 并安全快进；合并后 main push CI 另行核对。
 
 ## 用户验收
 
