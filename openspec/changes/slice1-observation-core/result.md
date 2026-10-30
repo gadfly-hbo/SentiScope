@@ -10,7 +10,7 @@
 
 ## 实施记录
 
-- 2026-10-30（Mac mini 本机，Node 24.21.0）实施完成首个候选（分支 work/qoder/slice1-observation-core）：
+- 2026-10-30（MacBook 本机，hostname huangbodeMacBook-Pro.local，Node 24.21.0）实施完成首个候选（分支 work/qoder/slice1-observation-core）：
   - 依赖锁定：`@earendil-works/pi-coding-agent@1.4.0`、`typebox@1.3.27`（与 OptraCall 同款）；TS 原生类型剥离运行，`engines >=24`，CI 用 Node 25.9.0。
   - `src/core/`：types（对象模型）、config（声明式配置加载与逐字段拒绝）、pipeline（口径校验管道：可比性链→方向与零分母/目标为零→差额→触发，四态输出）、evidence（内容寻址快照：SHA-256、双时间戳、tmp+rename 原子写、同字节幂等引用）、observation-store（node:sqlite，append-only，稳定观察身份索引）、identity 并入 pipeline。
   - `src/source/`：synthetic-server（loopback 合成 BI 源，时间锚点 @fresh/@stale，slow 挂起端点）、adapter（只读适配器，超时/HTTP/解析失败为一等错误）。
