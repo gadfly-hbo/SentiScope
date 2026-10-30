@@ -1,6 +1,8 @@
 # slice1-observation-core：切片一"证明读得准"
 
-日期 2026-10-30　状态 SPEC_DRAFT（待用户确认 UI Demo 与规格后启动实施）
+日期 2026-10-30　状态 CONFIRMED（用户已确认规格与 UI Demo，2026-10-30；实施进行中）
+
+未决问题落定（随确认生效）：1 观察存储用 SQLite（`node:sqlite`）；2 管理界面用 loopback Web（同 OptraCall 形态）；3 合成源用 loopback HTTP 模拟驾驶舱；4 真实模型调用**保持未授权**，会话探针不调用模型，如实施中需要须单独授权。
 
 上位方案：[整体产品方案 v0.1](../../docs/SentiScope_整体产品方案_v0.1.md) §7 变更 1。本变更建立最小可运行宿主与确定性观察管道，证明"读得准、拦得住"，不投递 Case。
 
@@ -38,7 +40,7 @@
 
 ## 允许修改路径
 
-`src/`、`skills/`、`tests/`、`scripts/`、`docs/`、`openspec/changes/slice1-observation-core/`、`package.json`（锁定 `@earendil-works/pi-coding-agent@1.4.0` 及必要依赖）、`.github/workflows/`（建立单任务 CI）、`AGENTS.md`（当前变更登记更新）。
+`src/`、`skills/`、`tests/`、`scripts/`、`config/`、`fixtures/`、`docs/`、`openspec/changes/slice1-observation-core/`、`tsconfig.json`、`package.json`（锁定 `@earendil-works/pi-coding-agent@1.4.0` 及必要依赖）、`.github/workflows/`（建立单任务 CI）、根目录启动入口（`启动 SentiScope.command`）、`AGENTS.md`（当前变更登记更新）。（实施时补齐 config/、fixtures/、tsconfig、启动入口，随独立复核建议同步本清单。）
 
 ## 关键边界
 

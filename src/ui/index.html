@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SentiScope · 管理界面</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --line: #e5e7eb; --text: #1f2933; --muted: #6b7280;
+    --accent: #0f766e; --accent-soft: #ecfdf5;
+    --ok: #15803d; --ok-bg: #ecfdf3; --gap: #b45309; --gap-bg: #fff7ed;
+    --insuf: #6b7280; --insuf-bg: #f3f4f6; --fail: #b91c1c; --fail-bg: #fef2f2;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.6; }
+  .banner { background: #1f2933; color: #f9fafb; text-align: center; padding: 8px 16px; font-size: 12px; }
+  .banner b { color: #fbbf24; font-weight: 600; }
+  header { display: flex; align-items: baseline; gap: 12px; padding: 16px 24px; background: var(--card); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 17px; font-weight: 700; }
+  header .sub { color: var(--muted); font-size: 12px; }
+  header .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  button.act { border: 1px solid var(--accent); color: var(--accent); background: var(--card); border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+  button.act:hover { background: var(--accent-soft); }
+  button.act:disabled { opacity: .5; cursor: wait; }
+  .layout { display: grid; grid-template-columns: 200px 1fr; min-height: calc(100vh - 96px); }
+  nav { background: var(--card); border-right: 1px solid var(--line); padding: 16px 0; }
+  nav button { display: block; width: 100%; text-align: left; padding: 10px 20px; border: 0; background: none; font-size: 14px; color: var(--muted); cursor: pointer; border-left: 3px solid transparent; }
+  nav button.active { color: var(--accent); background: var(--accent-soft); border-left-color: var(--accent); font-weight: 600; }
+  nav .section { padding: 16px 20px 6px; font-size: 11px; color: #9ca3af; }
+  main { padding: 24px; }
+  .view { display: none; }
+  .view.active { display: block; }
+  h2 { font-size: 16px; margin-bottom: 4px; }
+  .desc { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .stat .num { font-size: 26px; font-weight: 700; line-height: 1.3; }
+  .stat .label { color: var(--muted); font-size: 12px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .finding-title { font-weight: 600; margin-bottom: 6px; }
+  .kv { display: grid; grid-template-columns: 96px 1fr; gap: 2px 12px; font-size: 13px; margin: 10px 0; }
+  .kv dt { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  th { background: #fafbfc; color: var(--muted); font-weight: 500; font-size: 12px; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: #f8fafc; }
+  .chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .chip.ok { color: var(--ok); background: var(--ok-bg); }
+  .chip.gap { color: var(--gap); background: var(--gap-bg); }
+  .chip.insufficient { color: var(--insuf); background: var(--insuf-bg); }
+  .chip.failed { color: var(--fail); background: var(--fail-bg); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .muted { color: var(--muted); }
+  .card h3 { font-size: 14px; margin-bottom: 8px; }
+  .card + .card { margin-top: 12px; }
+  .rule { margin-top: 12px; }
+  .checks { list-style: none; margin: 8px 0; }
+  .checks li { display: flex; gap: 8px; padding: 5px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
+  .checks li:last-child { border-bottom: 0; }
+  .checks .mark { font-weight: 700; width: 18px; flex-shrink: 0; }
+  .mark.pass { color: var(--ok); } .mark.block { color: var(--fail); } .mark.hold { color: var(--gap); }
+  .overlay { position: fixed; inset: 0; background: rgba(15,23,42,.35); display: none; }
+  .overlay.open { display: block; }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 560px; max-width: 92vw; background: var(--bg); border-left: 1px solid var(--line); overflow-y: auto; transform: translateX(100%); transition: transform .18s; padding: 20px; }
+  .drawer.open { transform: translateX(0); }
+  .drawer-head { display: flex; align-items: start; gap: 12px; margin-bottom: 12px; }
+  .drawer-head h3 { font-size: 15px; flex: 1; }
+  .close { border: 1px solid var(--line); background: var(--card); border-radius: 6px; padding: 2px 10px; cursor: pointer; color: var(--muted); }
+  .placeholder { border: 1px dashed var(--line); border-radius: 10px; padding: 40px 24px; text-align: center; color: var(--muted); background: var(--card); }
+  footer { padding: 16px 24px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); background: var(--card); }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } nav { display: flex; overflow-x: auto; } nav .section { display: none; } .cards { grid-template-columns: repeat(2, 1fr); } .grid2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="banner">切片一（证明读得准）· <b>全部为合成数据</b> · 只读管理界面 · 不连接真实业务系统 · 不投递 Case</div>
+<header>
+  <h1>SentiScope</h1><span class="sub">管理界面 · 切片一</span>
+  <span class="right">
+    <button class="act" id="btn-observe">触发一轮观察</button>
+    <button class="act" id="btn-probe">运行会话探针</button>
+  </span>
+</header>
+<div class="layout">
+  <nav id="nav">
+    <div class="section">观察</div>
+    <button data-view="overview" class="active">观察总览</button>
+    <button data-view="runs">运行记录</button>
+    <button data-view="evidence">证据</button>
+    <div class="section">配置</div>
+    <button data-view="sources">来源与规则</button>
+    <div class="section">投递</div>
+    <button data-view="delivery">投递状态（切片二）</button>
+  </nav>
+  <main>
+    <section id="overview" class="view active">
+      <h2>观察总览</h2>
+      <p class="desc" id="overview-desc">尚未运行观察。点击右上角“触发一轮观察”。</p>
+      <div class="cards" id="stats"></div>
+      <div class="grid2">
+        <div class="card">
+          <h3>最新合格差距（待投递 · 切片二启用）</h3>
+          <div id="latest-gap" class="muted">暂无合格差距。</div>
+        </div>
+        <div class="card">
+          <h3>Agent 会话探针（不调用真实模型）</h3>
+          <div id="session-panel" class="muted">尚未运行探针。</div>
+        </div>
+      </div>
+    </section>
+    <section id="runs" class="view">
+      <h2>运行记录</h2>
+      <p class="desc">四态结果：正常 / 合格差距 / 证据不足 / 采集失败。点击行查看校验链、证据与未知项。</p>
+      <select id="run-select" style="margin-bottom:12px;padding:4px 8px;"></select>
+      <table>
+        <thead><tr><th>时间</th><th>指标</th><th>实体 · 周期</th><th>状态</th><th>原因</th><th>证据</th></tr></thead>
+        <tbody id="run-rows"></tbody>
+      </table>
+    </section>
+    <section id="evidence" class="view">
+      <h2>证据</h2>
+      <p class="desc">原始快照不可变、内容寻址、SHA-256；双时间戳（业务刷新 / 抓取）；入板时间切片二补齐。</p>
+      <table>
+        <thead><tr><th>规则</th><th>指标</th><th>SHA-256</th><th>业务刷新</th><th>抓取时间</th><th>来源定位</th></tr></thead>
+        <tbody id="evidence-rows"></tbody>
+      </table>
+    </section>
+    <section id="sources" class="view">
+      <h2>来源与规则</h2>
+      <p class="desc">声明式配置，版本化；只读边界硬编码。运行期数据目录：<span class="mono" id="home-note"></span></p>
+      <div id="sources-body"></div>
+    </section>
+    <section id="delivery" class="view">
+      <h2>投递状态</h2>
+      <p class="desc">切片二启用。本切片发现只入观察存储，不投递。</p>
+      <div class="placeholder">
+        <p><b>切片二：证明能自动入板</b></p>
+        <p>持久待投递队列 · 待投递 / 已送达 / 失败原因 · 探活与幂等重试 · 手动补推按钮</p>
+        <p class="muted">本区域当前为占位，不产生任何投递动作。</p>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="overlay" id="overlay"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-head"><h3 id="d-title"></h3><button class="close" id="d-close">关闭</button></div>
+  <div id="d-status" style="margin-bottom:8px"></div>
+  <div class="card"><h3>观察事实</h3><dl class="kv" id="d-facts"></dl></div>
+  <div class="card"><h3>校验链（逐项留痕）</h3><ul class="checks" id="d-checks"></ul></div>
+  <div class="card"><h3>证据</h3><dl class="kv" id="d-evidence"></dl></div>
+  <div class="card"><h3>未知与下一步</h3><p id="d-unknown" style="font-size:13px"></p></div>
+</aside>
+<footer>
+  SentiScope 切片一：合成 BI 模拟源 · 口径校验 · 证据快照 · 观察存储。阶段 1（同机、非常驻、可开关）。全部数据为合成示例。
+</footer>
+
+<script>
+const STATUS = {
+  ok: { label: '正常', cls: 'ok' },
+  gap: { label: '合格差距', cls: 'gap' },
+  insufficient: { label: '证据不足', cls: 'insufficient' },
+  failed: { label: '采集失败', cls: 'failed' },
+};
+const $ = (id) => document.getElementById(id);
+const headers = { 'x-sentiscope-client': '1' };
+let currentObservations = [];
+
+async function api(path, init = {}) {
+  const res = await fetch(path, { ...init, headers: { ...headers, ...(init.headers || {}) } });
+  if (!res.ok) throw new Error(`${path} → ${res.status}`);
+  return res.json();
+}
+
+async function loadOverview() {
+  const data = await api('/api/overview');
+  const counts = data.counts || { ok: 0, gap: 0, insufficient: 0, failed: 0 };
+  $('stats').innerHTML = [
+    { k: 'ok', label: '正常' }, { k: 'gap', label: '合格差距' },
+    { k: 'insufficient', label: '证据不足' }, { k: 'failed', label: '采集失败' },
+  ].map(s => `<div class="card stat"><div class="num" style="color:var(--${s.k === 'insufficient' ? 'insuf' : s.k})">${counts[s.k] ?? 0}</div><div class="label">${s.label}</div></div>`).join('');
+  $('overview-desc').textContent = data.latestRun
+    ? `最近一轮：${data.latestRun.runId}（${data.latestRun.startedAt}，${data.latestRun.count} 条观察）`
+    : '尚未运行观察。点击右上角"触发一轮观察"。';
+  const gap = data.latestGap;
+  $('latest-gap').innerHTML = gap ? `
+    <div class="finding-title">${gap.facts['规则'] ?? ''} · ${gap.metricName} · ${gap.entity} ${gap.periodLabel}</div>
+    <dl class="kv">${Object.entries(gap.facts).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+    <span class="muted">${gap.unknownNote}</span>` : '暂无合格差距。';
+  renderSession(data.session);
+}
+
+function renderSession(session) {
+  if (!session) { $('session-panel').innerHTML = '<span class="muted">尚未运行探针。</span>'; return; }
+  $('session-panel').innerHTML = `
+    <dl class="kv">
+      <dt>结果</dt><dd>${session.ok ? '✓ 会话创建/工具注册/事件订阅/正常结束 全部通过' : '✗ 失败'}</dd>
+      <dt>skills</dt><dd>${session.skills.map(s => s.name).join(', ') || '无'}</dd>
+      <dt>活动工具</dt><dd class="mono">${session.activeTools.join(', ')}</dd>
+      <dt>自定义工具</dt><dd>${session.customToolActive ? '✓ sentiscope_probe 已注册' : '✗ 未注册'}</dd>
+    </dl>`;
+}
+
+async function loadRuns() {
+  const { runs } = await api('/api/runs');
+  const select = $('run-select');
+  select.innerHTML = runs.map(r => `<option value="${r.runId}">${r.runId} · ${r.startedAt}（${r.count} 条）</option>`).join('');
+  if (!runs.length) { $('run-rows').innerHTML = ''; return; }
+  select.onchange = () => loadRun(select.value);
+  await loadRun(select.value);
+}
+
+async function loadRun(runId) {
+  const { observations } = await api(`/api/runs/${runId}`);
+  currentObservations = observations;
+  $('run-rows').innerHTML = observations.map((o, i) => `
+    <tr data-i="${i}"><td class="mono">${o.capturedAt.slice(0, 19).replace('T', ' ')}</td><td>${o.metricName}</td><td>${o.entity} · ${o.periodLabel}</td>
+    <td><span class="chip ${STATUS[o.status].cls}">${STATUS[o.status].label}</span></td>
+    <td>${o.reason}</td><td class="mono muted">${o.evidenceSha256 ? o.evidenceSha256.slice(0, 10) + '…' : '—'}</td></tr>`).join('');
+}
+
+async function loadEvidence() {
+  const { evidence } = await api('/api/evidence');
+  $('evidence-rows').innerHTML = evidence.map(e => `
+    <tr><td class="mono">${e.ruleId}</td><td>${e.metricName}</td><td class="mono">${e.sha256.slice(0, 16)}…</td>
+    <td class="mono">${e.sourceRefreshedAt ?? '—'}</td><td class="mono">${e.capturedAt.slice(0, 19).replace('T', ' ')}</td><td class="muted">${e.locator}</td></tr>`).join('')
+    || '<tr><td colspan="6" class="muted">暂无证据，请先触发观察。</td></tr>';
+}
+
+async function loadSources() {
+  const { sources, rules } = await api('/api/sources');
+  $('sources-body').innerHTML = sources.map(s => `
+    <div class="card"><h3>来源：${s.id}</h3>
+      <dl class="kv">
+        <dt>类型</dt><dd>${s.kind}（${s.baseUrl}）· 只读</dd>
+        <dt>范围</dt><dd>${s.scope.dashboard} · ${s.scope.entities.join(' / ')}</dd>
+      </dl></div>`).join('')
+    + rules.map(r => `
+      <div class="card rule"><h3>规则卡：${r.id}@v${r.version}</h3>
+        <dl class="kv">
+          <dt>指标</dt><dd>${r.metricName}（${r.metricId}）</dd>
+          <dt>实体·周期</dt><dd>${r.entity} · ${r.periodKind === 'month' ? '自然月' : '自然周'}</dd>
+          <dt>方向</dt><dd>${r.direction === 'higher-better' ? '越高越好' : '越低越好'} · 目标 ${r.target} ${r.unit}</dd>
+          <dt>触发依据</dt><dd>差距超过 ${r.thresholdPct}%；${r.requiresClosedPeriod ? '要求已结期' : '不要求结期'}${r.hasTrajectory ? '；有轨迹' : '；无轨迹'}${r.denominatorMetric ? '；分母指标（零分母不可计算）' : ''}</dd>
+          <dt>数据口径</dt><dd>过期阈值 ${r.maxStalenessDays} 天；期望过滤 ${JSON.stringify(r.expectedFilters ?? {})}</dd>
+        </dl></div>`).join('');
+}
+
+function openObservation(i) {
+  const o = currentObservations[i];
+  $('d-title').textContent = `${o.ruleId} · ${o.metricName} · ${o.entity} ${o.periodLabel}`;
+  $('d-status').innerHTML = `<span class="chip ${STATUS[o.status].cls}">${STATUS[o.status].label}</span> <span class="muted">${o.reason}</span>`;
+  $('d-facts').innerHTML = Object.entries(o.facts).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  $('d-checks').innerHTML = o.checks.map(c =>
+    `<li><span class="mark ${c.mark}">${c.mark === 'pass' ? '✓' : c.mark === 'block' ? '✕' : '‖'}</span><span><b>${c.name}</b>　<span class="muted">${c.note}</span></span></li>`).join('');
+  $('d-evidence').innerHTML = `
+    <dt>快照 SHA-256</dt><dd class="mono">${o.evidenceSha256 ?? '—（采集失败无快照）'}</dd>
+    <dt>业务刷新</dt><dd class="mono">${o.sourceRefreshedAt ?? '—'}</dd>
+    <dt>抓取时间</dt><dd class="mono">${o.capturedAt}</dd>
+    <dt>入板时间</dt><dd class="muted">切片二补齐</dd>
+    <dt>来源定位</dt><dd>${o.locator ?? '—'}</dd>`;
+  $('d-unknown').textContent = o.unknownNote;
+  $('drawer').classList.add('open'); $('overlay').classList.add('open');
+}
+
+const drawer = $('drawer'), overlay = $('overlay');
+const closeDrawer = () => { drawer.classList.remove('open'); overlay.classList.remove('open'); };
+$('run-rows').addEventListener('click', e => { const tr = e.target.closest('tr[data-i]'); if (tr) openObservation(Number(tr.dataset.i)); });
+$('d-close').addEventListener('click', closeDrawer);
+overlay.addEventListener('click', closeDrawer);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+
+$('nav').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-view]'); if (!btn) return;
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b === btn));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === btn.dataset.view));
+  closeDrawer();
+});
+
+$('btn-observe').addEventListener('click', async (e) => {
+  const btn = e.target; btn.disabled = true; btn.textContent = '观察中…';
+  try {
+    const summary = await api('/api/observe', { method: 'POST' });
+    console.log('run finished', summary.runId, summary.counts);
+    await Promise.all([loadOverview(), loadRuns(), loadEvidence()]);
+  } catch (err) { alert('触发失败：' + err.message); }
+  btn.disabled = false; btn.textContent = '触发一轮观察';
+});
+$('btn-probe').addEventListener('click', async (e) => {
+  const btn = e.target; btn.disabled = true;
+  try { const { session } = await api('/api/session?refresh=1'); renderSession(session); }
+  catch (err) { alert('探针失败：' + err.message); }
+  btn.disabled = false;
+});
+
+loadOverview(); loadRuns(); loadEvidence(); loadSources();
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "_synthetic": true,
+  "metricId": "metric.revenue.monthly",
+  "entity": "华东",
+  "period": { "kind": "month", "label": "2026-09", "closed": true },
+  "value": 870,
+  "unit": "万元",
+  "filters": { "region": ["华东", "华中"] },
+  "refreshedAt": "@fresh"
+}
