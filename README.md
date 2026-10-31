@@ -2,29 +2,38 @@
 
 Watch with evidence. ／ 以证据守望，把发现变成决策。
 
-SentiScope 是独立于 OptraCall 桌面端运行的**自主探索 Agent**：在授权范围内连接企业业务系统（首期为单个 BI 驾驶舱与少量约定指标），持续观察经营数据，按约定口径校验可信度，把**有证据的发现**自动转成 OptraCall Case 推入现有看板。它只负责发现，不负责决策——不建 Project、不做根因分析、不建第二套看板。
+SentiScope 是运行在用户本机的自主数据分析 Agent：接收用户导入的数据，从获授权的公开网页获取竞对与行业对比资料，保留原始证据并完成可重放清洗，再由真实 Agent 通过目标、历史、竞对和行业差距进行描述性探索，输出有证据的 **Case 候选**。MVP 不自动创建 Case 或 Project，不做预测、根因断言或经营动作。
 
 ## 当前状态
 
-工程初始化阶段，尚无可运行代码。已建立：
+切片一 `slice1-observation-core` 已完成并通过用户验收，作为工程基座保留。切片二 `slice2-exploration-candidates` 已在分支 `work/qoder/slice2-exploration-candidates` 完成本地受控实施：
 
-- [产品讨论稿 v0.1](OptraCall_自主探索Agent_产品讨论稿_v0.1.md)——产品定位、首期最小方案、三切片与九个合成样例验收
-- [技术盘点 v0.1](SentiScope_技术盘点_pi-coding-agent与部署拓扑_v0.1.md)——pi-coding-agent 官方能力表面、已有/需自建清单、两阶段部署拓扑
-- [工程规范 v0.1](docs/engineering-workflow.md)——开发流程的统一来源（openspec 变更、SDD/TDD、独立复核、Git/CI 节奏）
+- CSV／XLSX 导入、原始证据、画像与可重放清洗。
+- Host 批准的目标／历史／竞对／行业描述性比较。
+- 真实 pi-coding-agent SDK 运行路径、8 个领域工具与出口边界。
+- 反证与搜索覆盖强校验的 Case 候选门禁、人工复核和 OptraCall 风格 UI。
+- 本地 `npm run check` 39/39 通过，依赖审计 0 漏洞，非作者独立复核通过。
+
+真实模型质量、真实公网抓取与 held-out 验收尚未运行，须分别授权；候选尚未提交 Git 或创建 PR。详见 [整体产品方案 v0.2](docs/SentiScope_整体产品方案_v0.2.md)、[切片二规格](openspec/changes/slice2-exploration-candidates/spec.md) 与[结果记录](openspec/changes/slice2-exploration-candidates/result.md)。
+
+## 文档
+
+- [整体产品方案 v0.2](docs/SentiScope_整体产品方案_v0.2.md)——MVP、问题定义、对象模型、现有实现增删与切片路线
+- [工程规范 v0.1](docs/engineering-workflow.md)——开发流程统一来源
+- [产品讨论稿 v0.1](OptraCall_自主探索Agent_产品讨论稿_v0.1.md)——产品方向历史输入
+- [技术盘点 v0.1](SentiScope_技术盘点_pi-coding-agent与部署拓扑_v0.1.md)——pi-coding-agent 与部署历史盘点
 
 ## 目录
 
 ```
 AGENTS.md        工程入口（执行者先读）
-docs/            工程规范与设计文档
-openspec/changes/ 每项变更的规格(spec.md)与结果(result.md)，首次实际变更时创建
-src/             宿主与领域件（调度、观察存储、队列、投递）
-skills/          Agent 技能包（采集、清洗、校验等，复用 pi-coding-agent 官方机制）
+docs/            产品方案与工程规范
+openspec/changes/ 各项变更的规格、结果与 UI Demo
+src/             宿主与领域件
+skills/          Agent 技能包
 tests/           测试
 ```
 
 ## 开发
 
-开始任务前读 [AGENTS.md](AGENTS.md) 与 [工程规范](docs/engineering-workflow.md)。开发与试用均在 MacBook 本机；阶段 1 与 OptraCall 同机联动，两者都非常驻、可开启关闭。
-
-本仓库公开：不含凭据与真实经营数据，样例使用合成材料。
+开始任务前读 [AGENTS.md](AGENTS.md) 与 [工程规范](docs/engineering-workflow.md)。开发与试用均在 MacBook 本机，当前为非常驻、可开关形态。本仓库公开：凭据、用户导入文件、真实经营数据、原始会话与运行日志不得提交；公开样例使用合成材料。
