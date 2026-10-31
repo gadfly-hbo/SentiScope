@@ -40,7 +40,7 @@
 
 ## Git / CI
 
-- 当前候选未提交、未推送、未创建 PR；CI 未运行。
+- 2026-10-31 已提交 `5e9ac73`（`feat: implement descriptive exploration and case candidates`）并推送至 `origin/work/qoder/slice2-exploration-candidates`；未创建 PR，CI 未运行。
 - 分支包含大量新增与删除文件，待用户确认本结果记录和真实模型／公网授权范围后再决定是否收尾提交与 PR。
 
 ## 用户验收
