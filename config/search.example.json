@@ -1,0 +1,18 @@
+{
+  "providers": [
+    {
+      "type": "http",
+      "name": "my-search-provider",
+      "endpoint": "https://api.search-provider.example/v1/search",
+      "queryField": "q",
+      "hitsPath": "results",
+      "urlField": "url",
+      "titleField": "title",
+      "snippetField": "snippet",
+      "apiKeyEnv": "SENTISCOPE_SEARCH_API_KEY",
+      "apiKeyHeader": "x-api-key"
+    }
+  ],
+  "preferredDomains": ["stats.gov", "example-competitor.com"],
+  "budget": { "maxSearches": 8, "maxFetches": 6, "maxSnapshotReads": 20 }
+}
