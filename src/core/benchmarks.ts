@@ -24,8 +24,12 @@ const DEFINITIONS: BenchmarkDefinition[] = [
 
 export function getBenchmarkDefinition(id: string): BenchmarkDefinition {
   const definition = DEFINITIONS.find(item => item.id === id);
-  if (!definition) throw new Error('benchmark_definition_rejected');
+  if (!definition) throw new Error(`benchmark_definition_rejected:${id}；可用 definitionId=${DEFINITIONS.map(item => item.id).join(', ')}`);
   return definition;
+}
+
+export function listBenchmarkDefinitions(): BenchmarkDefinition[] {
+  return [...DEFINITIONS];
 }
 
 export function previousYearPeriod(period: string): boolean {

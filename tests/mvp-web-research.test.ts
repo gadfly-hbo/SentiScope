@@ -239,3 +239,30 @@ test('WEB-01：Provider 自报命中等级不生效，Host 分级为准；HTTP P
   const insecure = createHttpSearchProvider({ name: 'insecure', endpoint: 'http://search.example/api', queryField: 'q', hitsPath: 'results', urlField: 'url', titleField: 'title', snippetField: 'snippet' });
   await assert.rejects(insecure.search('行业增速', 'call-1'), /insecure_search_endpoint/);
 });
+
+test('WEB-01：HTTP Provider 支持 POST 查询体与 Bearer 鉴权（MiniMax Coding Plan 形状）', async () => {
+  const provider = createHttpSearchProvider({
+    name: 'minimax-like', endpoint: 'https://api.minimaxi.com/v1/coding_plan/search', method: 'POST', queryField: 'q',
+    hitsPath: 'results', urlField: 'url', titleField: 'title', snippetField: 'snippet',
+    apiKeyEnv: 'SENTISCOPE_TEST_SEARCH_KEY', apiKeyHeader: 'Authorization', authScheme: 'bearer',
+  });
+  let captured: Request | undefined;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    captured = new Request(input, init);
+    return new Response(JSON.stringify({ results: [{ url: 'https://example.com/a', title: 'A', snippet: 'a' }] }), { status: 200 });
+  };
+  process.env.SENTISCOPE_TEST_SEARCH_KEY = 'secret-token';
+  try {
+    const hits = await provider.search('行业增速', 'call-post-1');
+    assert.equal(hits[0]!.url, 'https://example.com/a');
+    assert.equal(captured!.method, 'POST');
+    assert.equal(captured!.headers.get('authorization'), 'Bearer secret-token');
+    assert.equal(captured!.headers.get('content-type'), 'application/json');
+    const body = await captured!.json() as { q: string };
+    assert.equal(body.q, '行业增速');
+  } finally {
+    delete process.env.SENTISCOPE_TEST_SEARCH_KEY;
+    globalThis.fetch = originalFetch;
+  }
+});

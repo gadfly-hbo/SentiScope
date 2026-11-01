@@ -25,7 +25,7 @@ const host = await startHost({
   forbiddenValues,
   maxToolCalls: Number(process.env.SENTISCOPE_MAX_TOOL_CALLS ?? 40),
   runtimeFactory: realModel
-    ? () => new PiAgentRuntime({ skillsDir: join(root, 'skills'), cwd: dataDir, model: 'pi-configured', egress: { allowedDimensions: ['closed', 'comparable', 'label'], forbiddenValues } })
+    ? () => new PiAgentRuntime({ skillsDir: join(root, 'skills'), cwd: dataDir, model: process.env.SENTISCOPE_MODEL ?? 'pi-configured', egress: { allowedDimensions: ['closed', 'comparable', 'label'], forbiddenValues } })
     : (dataset, mode) => createDemoRuntime(dataset, mode),
   researchFactory: realModel
     ? undefined

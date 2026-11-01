@@ -88,8 +88,20 @@ export async function secureGet(initial: URL, allowedHosts: string[], lookup: Lo
     }
     const addresses = await lookup(url.hostname);
     if (!addresses.length || addresses.some(item => !isPublicIp(item.address))) throw new WebError('private_ip_rejected');
-    const response = await transport(url, addresses[0]!.address, maxBytes, timeoutMs);
-    if (!isPublicIp(response.remoteAddress)) throw new WebError('private_ip_rejected');
+    let response: WebResponse | undefined;
+    let lastError: unknown;
+    for (const candidate of addresses) {
+      try {
+        response = await transport(url, candidate.address, maxBytes, timeoutMs);
+        if (!isPublicIp(response.remoteAddress)) throw new WebError('private_ip_rejected');
+        lastError = undefined;
+        break;
+      } catch (error) {
+        if (error instanceof WebError) throw error;
+        lastError = error;
+      }
+    }
+    if (!response) throw lastError instanceof Error ? lastError : new WebError('connect_failed');
     if (response.body.length > maxBytes) throw new WebError('too_large');
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.location;
@@ -145,7 +157,10 @@ export function defaultTransport(url: URL, address: string, maxBytes: number, ti
       method: 'GET',
       agent: false,
       servername: url.hostname,
-      lookup: (_hostname, _options, callback) => callback(null, address, isIP(address)),
+      lookup: ((_hostname: string, options: { all?: boolean }, callback: (error: Error | null, address: string, family: number) => void) => {
+        if (options?.all) (callback as unknown as (error: Error | null, addresses: Array<{ address: string; family: number }>) => void)(null, [{ address, family: isIP(address) }]);
+        else callback(null, address, isIP(address));
+      }) as import('node:net').LookupFunction,
       headers: { host: url.host, accept: 'text/html,text/plain', 'user-agent': 'SentiScope/0.2 (+local authorized analysis)' },
       timeout: timeoutMs,
     }, response => {

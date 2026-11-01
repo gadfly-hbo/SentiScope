@@ -59,6 +59,26 @@
 - 复核残留（低，不阻断，记录为后续候选改进项）：N-3 搜索响应 1MB 上限为事后校验、无流式截断；N-4 被阻断／配额拒绝事件的 callKey 可与下一次真实调用重复（事件 id 仍唯一）。N-1（无 `<time>` 快照的发布时间不可核验）已以 `published_at_unverified` issue 标注，N-2（全链失败事件带 attempts）与 N-5（fetch/read 配额事件断言）已修复补测。
 - 其他记录：L-4 为切片一规格文件仅链接更新（v0.2→v0.3 改名指针，未改写切片一验收结论）；L-5 为未跟踪的 `.qoder/repowiki` 生成卡片仍描述旧单 URL 链路（非交付物，待重新生成）。
 
+## 2026-11-01 真实模型＋真实搜索同步验收（MiniMax，用户已授权）
+
+- 授权范围：真实模型 `minimax-cn:MiniMax-M3.1-Flash`（与 OptraCall 当前选中一致，见 `~/.optracall/settings.json` 的 `selectedId=minimax-m31-flash`）；搜索 Provider 为 MiniMax Coding Plan 搜索 API（`POST https://api.minimaxi.com/v1/coding_plan/search`，`q`→`organic[{title,link,snippet,date}]`），与模型共用 Pi `auth.json` 中的 `minimax-cn` 凭据，运行时经 `MINIMAX_API_KEY` 环境变量注入、不落盘；数据为合成 fixture；隔离工作区 `~/.sentiscope/real-acceptance`；配额 搜索6／抓取4／读取12，优先域 census.gov/sec.gov/stats.gov。用户指示两项授权同时进行。
+- 为支持该 Provider，通用 HTTP 适配器新增 POST 查询体与 Bearer 鉴权（`method`／`authScheme`），预检 `scripts/authorization-check.mjs` 全绿；真实搜索实测返回 10 条命中。
+
+### 运行过程与修复（按轮次，失败均如实保留）
+
+1. **R1**：真实模型 31 次比较全部使用自创 `definitionId`（`revenue.target_gap`、`yoy_change` 等），40 次工具预算耗尽、零候选。根因是 Host 从未提供已批准基准目录，属环境缺口。修复：prompt 与 `sentiscope_compare` 描述注入基准目录，`getBenchmarkDefinition` 拒绝信息带出可用 id。
+2. **R2**：7 次有效比较、反证质量正常，但 4 次 `propose` 全部 `search_coverage_required`；`fetch_page` 全部失败。修复：coverage 拒绝信息给出期望 selectionContext 与已存条目、`sentiscope_coverage` 回读已存列表、prompt 写明“逐字一致”契约。传输根因两个：Node 24 以 `{all:true}` 调用自定义 `lookup`（单地址回调导致 `ERR_INVALID_IP_ADDRESS`）；`secureGet` 只用 DNS 首个地址，个别 IP/IPv6 不通即整体失败。修复：`defaultTransport` 兼容 `all:true` 数组回调、`secureGet` 逐地址回退（策略错误不重试），补回归测试。
+3. **遥测写盘事故**：每条流式 `sdk:message_update` 被复制进 `run.events` 并全量重写 run JSON（R1 2838 条，库文件 56MB）。用户指出“只记里程碑／设上限／折叠”的修复方案仍是越位管 Agent 执行。最终按「Host 管环境」原则删除平行机制：Host 不再订阅或复制 SDK 遥测，`run.events` 只写 Host 环境事实，会话原文由 `SessionManager` 持久化（B-08；2000 条流式事件回归测试）。教训已写入长期记忆。
+4. **R3**：真实搜索→快照→外部数字首次走通（国家统计局 2026Q3/2025Q3 GDP），但 `亿元` 不在清洗单位表，新登记行被 `unknown_unit` 隔离。补 `亿元→万元` 确定性换算与测试。
+5. **R4**：模型已理解并遵守 coverage 逐字契约，但 40 次工具预算在提交阶段耗尽，3 个 qualified 比较未能 propose（会话原文明确记录此原因）。
+6. **R5（预算 60）完成**：真实模型＋真实搜索端到端产出 **3 个通过门禁的真实候选**——华东 2026-09 收入低于目标 120 万元（−12%）、西南收入同比 −6.2%、华南平均等待时长超目标 +53.3%；每个候选都有原始行证据、计算引用、反证与未知项。行业／竞对比较因口径不一致为 `needs_evidence`，未产候选（全国 GDP、同庆楼与“同一细分市场”不可比，门禁正确拒绝）。本轮 6 次搜索、2 个真实快照、4 次快照读取、1 条外部事实登记；`model=minimax-cn:MiniMax-M3.1-Flash`、`sessionId=01a19580-2b2c-7372-8d46-dfbd5dd777b7`，库文件不再增长。
+
+### 结论与边界
+
+- 真实模型与真实搜索 Provider 链路已端到端验证，候选为真实 Agent 自主产出（非 ControlledRuntime）。**这不等于切片二验收通过**：AGT/E2E held-out、多次运行稳定性、真实导入数据、UI 全量走查、独立复核与 CI 均未做；候选尚待用户人工复核。
+- 语义口径（例如全国 GDP 与细分市场是否可比）仍由 Agent 声明并由人工复核，Host 只校验声明与证据的一致性、来源等级与发布时间；R5 中不可比基准被正确留在待补证。
+- 真实搜索为 Coding Plan 搜索 API，命中以新闻／转载为主（本批快照均为 C 级）；C 级来源按二手记录，不能作为一手基准通过门禁。
+
 ## Host 与 Agent 职责边界及复用检查（2026-10-31）
 
 - 已按工程规范 §4 完成实际代码、调用链、SDK 文档与受控运行记录检查，正式记录见 [boundary-review.md](boundary-review.md)，原始证据位于被忽略的 `.local/slice2-boundary-review/`（startup.log、health.json、runs.json、candidates.json）。

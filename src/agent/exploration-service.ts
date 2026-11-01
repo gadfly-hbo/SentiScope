@@ -36,14 +36,13 @@ export type ExplorationTools = {
   compare: (request: ComparisonRequest) => Promise<ComparisonResult & { id: string }>;
   propose: (request: ProposalRequest) => Promise<CaseCandidate>;
   observe: (input: { summary: string; status?: 'observed' | 'needs_evidence' | 'rejected'; evidence?: EvidenceRef[]; quality?: QualityState; comparisonId?: string; role?: 'support' | 'refutation' | 'quality' }) => Promise<Observation>;
-  setCoverage: (coverage: string[]) => Promise<void>;
+  setCoverage: (coverage: string[]) => Promise<string[]>;
 };
 
 export type RuntimeContext = {
   tools: ExplorationTools;
   signal?: AbortSignal;
   dataset?: DatasetVersion;
-  onSdkEvent?: (event: { type: string; [key: string]: unknown }) => void;
   onSession?: (identity: { sessionId?: string; model?: string }) => void;
 };
 export type RuntimeOutcome = { stopReason: string; model?: string; sessionId?: string };
@@ -116,9 +115,10 @@ export async function runExploration(options: RunOptions): Promise<ExplorationRu
     } catch (error) {
       syncResearchUsage();
       const code = error instanceof WebError || error instanceof WebResearchError ? error.code : 'research_failed';
-      run.events.push({ type: 'research_error', at: now, summary: `${type} 被 Host 拒绝：${code}`, details: { tool: type, error: code } });
+      const cause = code === 'research_failed' ? String((error as Error)?.message ?? error).slice(0, 200) : undefined;
+      run.events.push({ type: 'research_error', at: now, summary: `${type} 被 Host 拒绝：${code}`, details: { tool: type, error: code, ...(cause ? { cause } : {}) } });
       persist();
-      return { ok: false, error: code, note: 'Host 拒绝并留事件；可调整参数重试或收束，不得把失败当作证据' };
+      return { ok: false, error: code, note: 'Host 拒绝并留事件；可调整参数重试或收束，不得把失败当作证据', ...(cause ? { cause } : {}) };
     }
   };
   const appendObservation = (observation: Observation) => {
@@ -220,7 +220,7 @@ export async function runExploration(options: RunOptions): Promise<ExplorationRu
       charge('candidate', '提交 Case 候选门禁');
       const comparison = comparisons.get(request.comparisonId);
       if (!comparison?.thresholdVersion) throw new Error('comparison_not_found');
-      if (!run.coverage.includes(comparison.selectionContext)) throw new Error('search_coverage_required');
+      if (!run.coverage.includes(comparison.selectionContext)) throw new Error(`search_coverage_required：请先用 sentiscope_coverage 保存与本比较 selectionContext 完全一致的条目。本比较 selectionContext=${comparison.selectionContext}；当前已保存 coverage=${JSON.stringify(run.coverage).slice(0, 300)}`);
       const refutation = store.listObservations(runId).find(item => item.id === request.refutationObservationId && item.role === 'refutation' && item.comparisonId === request.comparisonId && item.evidence.length > 0);
       if (!refutation) throw new Error('refutation_observation_required');
       const webSources = new Set(comparison.evidence.filter(ref => ref.kind === 'web').map(ref => ref.assetSha256));
@@ -247,13 +247,13 @@ export async function runExploration(options: RunOptions): Promise<ExplorationRu
       charge('coverage', '保存搜索覆盖与候选选择上下文');
       run.coverage = [...new Set([...run.coverage, ...coverage])];
       persist();
+      return [...run.coverage];
     },
   };
 
   try {
     const outcome = await runtime.run({
       tools, signal: options.signal, dataset,
-      onSdkEvent: event => { run.events.push({ type: `sdk:${event.type}`, at: now, summary: 'Pi SDK 事件', details: event }); persist(); },
       onSession: identity => { if (identity.sessionId) run.sessionId = identity.sessionId; if (identity.model) run.model = identity.model; persist(); },
     });
     if (outcome.model) run.model = outcome.model;

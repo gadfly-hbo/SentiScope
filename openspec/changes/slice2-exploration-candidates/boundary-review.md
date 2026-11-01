@@ -92,6 +92,10 @@ scripts/start.mjs（SENTISCOPE_REAL_MODEL=1）
 
 - `demo.ts` 的本地 fixture Provider／传输只在 `ControlledRuntime` 演示模式注入，启动日志与 UI 明示“合成受控演示、不出网”；真实模型模式不注入。它不得作为自主性或真实公网质量的证据。
 
+### B-08【通过】Host 不复制 SDK 遥测，会话原文由 SDK 持久化
+
+- 真实运行中曾把每条流式 `sdk:message_update` 复制进 `run.events` 并全量重写 run JSON（第一轮 2838 条，写放大至 56MB）。这属于 Host 自建平行事件流，已由用户指出并纠正：`run.events` 只保留 Host 环境事实（工具调用、门禁、预算、取消、状态），`PiAgentRuntime` 不再 `session.subscribe`，会话原文由 `SessionManager` 按 SDK 既有方式持久化。Host 不给 Agent 事件分级、不设上限、不做折叠。回归测试：`tests/mvp-pi-runtime.test.ts`（2000 条流式事件零订阅、零 `sdk:` 运行事件）。
+
 ## 最终判定与退出条件
 
 - Host 职责、必要安全控制、领域持久化与最小适配：**通过**。

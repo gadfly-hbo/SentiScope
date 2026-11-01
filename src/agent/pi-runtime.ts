@@ -1,9 +1,10 @@
 import { join } from 'node:path';
-import { createAgentSession, DefaultResourceLoader, defineTool, loadSkillsFromDir, SessionManager } from '@earendil-works/pi-coding-agent';
+import { createAgentSession, DefaultResourceLoader, defineTool, loadSkillsFromDir, ModelRuntime, SessionManager } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 import type { DatasetVersion } from '../core/mvp-types.ts';
 import type { ComparisonRequest, ExplorationRuntime, ExplorationTools, ProposalRequest, RuntimeContext, RuntimeOutcome } from './exploration-service.ts';
 import { assertEgressAllowed, DEFAULT_EGRESS, projectDatasetForModel, projectRowForModel, sanitizeEgressPayload, type EgressPolicy } from './egress.ts';
+import { listBenchmarkDefinitions } from '../core/benchmarks.ts';
 
 type SessionLike = {
   prompt: (text: string) => Promise<void>;
@@ -27,6 +28,7 @@ type PiOptions = {
   model?: string;
   egress?: EgressPolicy;
   sessionFactory?: SessionFactory;
+  modelRuntimeFactory?: () => Promise<{ getModel(provider: string, id: string): unknown }>;
 };
 
 export class PiAgentRuntime implements ExplorationRuntime {
@@ -53,20 +55,31 @@ export class PiAgentRuntime implements ExplorationRuntime {
       extensionFactories: [pi => { pi.on('before_provider_request', event => { return guardProviderPayload(event.payload, this.egress); }); }],
     });
     await loader.reload();
+    const pin = this.options.model && this.options.model !== 'pi-configured' && this.options.model.includes(':') ? this.options.model : null;
+    const modelOptions: Record<string, unknown> = {};
+    if (pin) {
+      const runtime = this.options.modelRuntimeFactory ? await this.options.modelRuntimeFactory() : await ModelRuntime.create();
+      const [provider, ...rest] = pin.split(':');
+      const model = runtime.getModel(provider, rest.join(':'));
+      if (!model) throw new Error(`model_unavailable:${pin}`);
+      modelOptions.model = model;
+      modelOptions.modelRuntime = runtime;
+    }
     const { session } = await factory({
       cwd: this.options.cwd,
       sessionManager: SessionManager.create(this.options.cwd, this.options.sessionDir ?? join(this.options.cwd, '.sentiscope-sessions')),
       tools: Object.keys(tools),
       customTools: Object.values(tools),
       resourceLoader: loader,
+      ...modelOptions,
     });
     const actualModel = session.agent?.state.model;
     context.onSession?.({ sessionId: session.sessionManager?.getSessionId(), model: actualModel?.id ? `${actualModel.provider ?? 'provider'}:${actualModel.id}` : this.model });
     const abort = () => { void session.abort(); };
     context.signal?.addEventListener('abort', abort, { once: true });
-    const unsubscribe = session.subscribe(event => context.onSdkEvent?.(sanitizeEgressPayload(event, this.egress)));
     try {
-      const prompt = `你是 SentiScope 描述性数据分析 Agent。数据集 ${dataset.id}（版本 ${dataset.version}）有 ${dataset.rows.length} 行，质量 ${JSON.stringify(dataset.quality)}。\n只能使用 sentiscope_* 工具查询标准行、执行比较和提交候选；需要外部基准时可自主使用 web_search／fetch_page／read_snapshot／record_web_fact，搜索摘要只是线索，候选数字必须来自快照原文。你必须自主选择与目标、历史、竞对、行业有关的比较，检查反证和搜索覆盖，允许零候选或以待补证收束。不得编造数值、基准、证据或根因；候选只能引用 compare 返回的 id。`;
+      const catalog = listBenchmarkDefinitions().map(def => `${def.id}（${def.comparisonType}：actual=${def.actualMetric}${def.actualEntity ? `/${def.actualEntity}` : ''}，benchmark=${def.benchmarkMetric}${def.benchmarkEntity ? `/${def.benchmarkEntity}` : ''}，期间=${def.periodRule}，方向=${def.direction}）`).join('；');
+      const prompt = `你是 SentiScope 描述性数据分析 Agent。数据集 ${dataset.id}（版本 ${dataset.version}）有 ${dataset.rows.length} 行，质量 ${JSON.stringify(dataset.quality)}。\n只能使用 sentiscope_* 工具查询标准行、执行比较和提交候选；需要外部基准时可自主使用 web_search／fetch_page／read_snapshot／record_web_fact，搜索摘要只是线索，候选数字必须来自快照原文。\nHost 批准的比较基准只有这些，definitionId 不得自创：${catalog}。竞对／行业比较必须同时提供双方本期与去年同期共 4 个 rowId。先用 sentiscope_query 找到 rowId，再比较；被拒绝时按错误信息修正，不要换着名字猜。\n你必须自主选择与目标、历史、竞对、行业有关的比较，检查反证和搜索覆盖，允许零候选或以待补证收束。提交候选前必须先用 sentiscope_coverage 保存与 compare 的 selectionContext 完全一致的覆盖条目（逐字相同），并先用 sentiscope_observe 记录同 comparisonId、带证据的反证。不得编造数值、基准、证据或根因；候选只能引用 compare 返回的 id。`;
       assertEgressAllowed(prompt, this.egress);
       await session.prompt(prompt);
       return {
@@ -76,7 +89,6 @@ export class PiAgentRuntime implements ExplorationRuntime {
       };
     } finally {
       context.signal?.removeEventListener('abort', abort);
-      unsubscribe();
       session.dispose();
     }
   }
@@ -129,7 +141,7 @@ function buildPiTools(tools: ExplorationTools, egress: EgressPolicy) {
       execute: async (_toolCallId, params: import('../source/web-research.ts').WebFactInput) => { assertEgressAllowed(params, egress); return result(await tools.recordWebFact(params)); },
     }),
     sentiscope_compare: defineTool({
-      name: 'sentiscope_compare', label: '描述性比较', description: '使用 actualRowId 与 benchmarkRowId 进行目标、历史、竞对或行业比较；Host 负责取值、计算与证据。',
+      name: 'sentiscope_compare', label: '描述性比较', description: `使用 actualRowId 与 benchmarkRowId 进行目标、历史、竞对或行业比较；Host 负责取值、计算与证据。definitionId 只能是：${listBenchmarkDefinitions().map(def => def.id).join('、')}；竞对／行业需另给 actualPreviousRowId 与 benchmarkPreviousRowId。`,
       parameters: Type.Object({
         definitionId: Type.String(), actualRowId: Type.String(), benchmarkRowId: Type.String(),
         actualPreviousRowId: Type.Optional(Type.String()), benchmarkPreviousRowId: Type.Optional(Type.String()), selectionContext: Type.String(),
@@ -152,7 +164,7 @@ function buildPiTools(tools: ExplorationTools, egress: EgressPolicy) {
     sentiscope_coverage: defineTool({
       name: 'sentiscope_coverage', label: '保存搜索覆盖', description: '记录本次检查过的指标、实体、切片、基准与舍弃原因。',
       parameters: Type.Object({ coverage: Type.Array(Type.String(), { minItems: 1 }) }),
-      execute: async (_toolCallId, params: { coverage: string[] }) => { assertEgressAllowed(params, egress); await tools.setCoverage(params.coverage); return result({ ok: true }); },
+      execute: async (_toolCallId, params: { coverage: string[] }) => { assertEgressAllowed(params, egress); const saved = await tools.setCoverage(params.coverage); return result({ ok: true, coverage: saved }); },
     }),
   };
 }

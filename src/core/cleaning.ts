@@ -16,7 +16,7 @@ export function standardizeDataset(options: CleanOptions): DatasetVersion {
   let rows = options.rawRows.map(mapRow);
   rows = applyStep(rows, steps, 'field_mapping', { fields: ['metric', 'entity', 'period', 'value', 'unit'] }, row => ({ ...row }));
   rows = applyStep(rows, steps, 'period_normalization', { timezone: 'Asia/Shanghai' }, normalizePeriod);
-  rows = applyStep(rows, steps, 'unit_normalization', { '元': { unit: '万元', factor: 0.0001 }, '千元': { unit: '万元', factor: 0.1 } }, normalizeUnit);
+  rows = applyStep(rows, steps, 'unit_normalization', { '元': { unit: '万元', factor: 0.0001 }, '千元': { unit: '万元', factor: 0.1 }, '亿元': { unit: '万元', factor: 10000 } }, normalizeUnit);
   rows = applyStep(rows, steps, 'entity_alias', aliases, row => aliases[row.entity] ? { ...row, entity: aliases[row.entity]! } : { ...row });
   rows = applyStep(rows, steps, 'duplicate_isolation', { key: ['metricId', 'entity', 'period'] }, isolateDuplicates);
   rows = applyStep(rows, steps, 'quality_gate', { allowed: ['usable', 'blocked', 'needs_evidence'] }, row => ({ ...row }));
@@ -89,6 +89,7 @@ function normalizeUnit(row: StandardRow): StandardRow {
   if (row.value == null) return block(row, row.issues.includes('missing_value') ? 'missing_value' : 'invalid_value');
   if (row.unit === '元') return { ...row, value: row.value / 10_000, unit: '万元' };
   if (row.unit === '千元') return { ...row, value: row.value / 1_000, unit: '万元' };
+  if (row.unit === '亿元') return { ...row, value: row.value * 10_000, unit: '万元' };
   if (['万元', '秒', '单', '%', '百分点'].includes(row.unit)) return { ...row };
   return block({ ...row, value: null }, 'unknown_unit');
 }

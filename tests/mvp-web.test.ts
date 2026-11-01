@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { isPublicIp, secureGet, validatePublicUrl, WebError, type Lookup, type Transport, type WebResponse } from '../src/source/public-web.ts';
+import { createServer } from 'node:http';
+import { defaultTransport, isPublicIp, secureGet, validatePublicUrl, WebError, type Lookup, type Transport, type WebResponse } from '../src/source/public-web.ts';
 
 const PUBLIC_IP = '93.184.216.34';
 const lookup: Lookup = async () => [{ address: PUBLIC_IP, family: 4 }];
@@ -62,4 +63,30 @@ test('WEB-04：重定向超过 3 次或无 Location 时拒绝，robots.txt 自�
   const result = await get('https://example.com/robots.txt', async url => { paths.push(url.pathname); return response('User-agent: *\nDisallow: /'); }, [], true);
   assert.deepEqual(paths, ['/robots.txt']);
   assert.equal(result.response.status, 200);
+});
+
+test('WEB-04：defaultTransport 在 Node all:true lookup 下仍按固定 IP 建立连接', async () => {
+  const server = createServer((req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('ok'); });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const port = (server.address() as { port: number }).port;
+  try {
+    const result = await defaultTransport(new URL(`http://127.0.0.1:${port}/`), '127.0.0.1', 1024, 2000);
+    assert.equal(result.status, 200);
+    assert.equal(result.body.toString('utf8'), 'ok');
+  } finally {
+    server.close();
+  }
+});
+
+test('WEB-04：首个地址连接失败回退后续公网地址，策略错误不重试', async () => {
+  const attempts: string[] = [];
+  const multiLookup: Lookup = async () => [{ address: '93.184.216.34', family: 4 }, { address: '93.184.216.35', family: 4 }];
+  const result = await secureGet(new URL('https://example.com/'), [], multiLookup, async (_url, address) => {
+    attempts.push(address);
+    if (address.endsWith('.34')) throw new Error('socket disconnected');
+    return response('ok');
+  }, 1024, 1000);
+  assert.equal(result.response.status, 200);
+  assert.deepEqual(attempts, ['93.184.216.34', '93.184.216.35']);
+  await assert.rejects(secureGet(new URL('https://example.com/'), [], multiLookup, async () => { throw new WebError('too_large'); }, 1024, 1000), /too_large/);
 });

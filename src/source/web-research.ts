@@ -32,6 +32,8 @@ export type HttpSearchProviderConfig = {
   snippetField: string;
   apiKeyEnv?: string;
   apiKeyHeader?: string;
+  method?: 'GET' | 'POST';
+  authScheme?: 'bearer' | 'raw';
 };
 
 type SearchOutcome = {
@@ -107,11 +109,19 @@ export function createHttpSearchProvider(config: HttpSearchProviderConfig): Sear
     async search(query: string, callKey: string): Promise<SearchHit[]> {
       const url = new URL(config.endpoint);
       if (url.protocol !== 'https:') throw new WebResearchError('insecure_search_endpoint');
-      url.searchParams.set(config.queryField, query);
       const headers: Record<string, string> = { accept: 'application/json' };
       const apiKey = config.apiKeyEnv ? process.env[config.apiKeyEnv] : undefined;
-      if (config.apiKeyEnv && config.apiKeyHeader && apiKey) headers[config.apiKeyHeader] = apiKey;
-      const response = await fetch(url, { headers, signal: AbortSignal.timeout(10_000) });
+      if (apiKey && config.authScheme === 'bearer') headers[config.apiKeyHeader ?? 'Authorization'] = `Bearer ${apiKey}`;
+      else if (apiKey && config.apiKeyHeader) headers[config.apiKeyHeader] = apiKey;
+      const init: RequestInit = { headers, signal: AbortSignal.timeout(10_000) };
+      if ((config.method ?? 'GET') === 'POST') {
+        init.method = 'POST';
+        headers['content-type'] = 'application/json';
+        init.body = JSON.stringify({ [config.queryField]: query });
+      } else {
+        url.searchParams.set(config.queryField, query);
+      }
+      const response = await fetch(url, init);
       if (!response.ok) throw new WebResearchError(`http_${response.status}`, `HTTP ${response.status}`, response.status === 429 || response.status >= 500);
       const body = await response.text();
       if (body.length > 1024 * 1024) throw new WebResearchError('search_response_too_large');
@@ -172,11 +182,15 @@ export function loadWebResearchConfig(path: string): WebResearchConfig {
     for (const key of ['name', 'endpoint', 'queryField', 'hitsPath', 'urlField', 'titleField', 'snippetField']) {
       if (typeof record[key] !== 'string' || !String(record[key]).trim()) throw new WebResearchError('invalid_search_config');
     }
+    if (record.method !== undefined && !['GET', 'POST'].includes(String(record.method))) throw new WebResearchError('invalid_search_config');
+    if (record.authScheme !== undefined && !['bearer', 'raw'].includes(String(record.authScheme))) throw new WebResearchError('invalid_search_config');
     return createHttpSearchProvider({
       name: String(record.name), endpoint: String(record.endpoint), queryField: String(record.queryField), hitsPath: String(record.hitsPath),
       urlField: String(record.urlField), titleField: String(record.titleField), snippetField: String(record.snippetField),
       ...(typeof record.apiKeyEnv === 'string' ? { apiKeyEnv: record.apiKeyEnv } : {}),
       ...(typeof record.apiKeyHeader === 'string' ? { apiKeyHeader: record.apiKeyHeader } : {}),
+      ...(record.method !== undefined ? { method: record.method as 'GET' | 'POST' } : {}),
+      ...(record.authScheme !== undefined ? { authScheme: record.authScheme as 'bearer' | 'raw' } : {}),
     });
   });
   return {

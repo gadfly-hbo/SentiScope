@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { join } from 'node:path';
 import { guardProviderPayload, PiAgentRuntime } from '../src/agent/pi-runtime.ts';
+import { runExploration } from '../src/agent/exploration-service.ts';
+import { WorkspaceStore } from '../src/core/workspace-store.ts';
 import { assertEgressAllowed, projectRowForModel, sanitizeEgressPayload } from '../src/agent/egress.ts';
 import type { DatasetVersion, StandardRow } from '../src/core/mvp-types.ts';
 import type { ExplorationTools } from '../src/agent/exploration-service.ts';
@@ -61,31 +63,81 @@ test('真实 SDK 路径可注入受控会话：prompt 调用、工具白名单�
   assert.equal(outcome.sessionId, 'session-test-1');
   assert.match(prompt, /只能使用 sentiscope_/);
   assert.match(prompt, /候选数字必须来自快照原文/);
+  assert.match(prompt, /definitionId 不得自创/);
+  assert.match(prompt, /revenue-target/);
+  assert.match(prompt, /growth-industry/);
+  assert.match(prompt, /revenue-history/);
+  const { getBenchmarkDefinition } = await import('../src/core/benchmarks.ts');
+  assert.throws(() => getBenchmarkDefinition('yoy_change'), /可用 definitionId=revenue-target, revenue-history, growth-competitor, growth-industry, wait-target/);
   assert.equal(prompt.includes('内部秘密'), false);
   assert.equal(disposed, true);
   assert.equal(captured.length, 1);
   assert.deepEqual(captured[0]!.tools, ['sentiscope_profile', 'sentiscope_query', 'sentiscope_clean', 'sentiscope_web_search', 'sentiscope_fetch_page', 'sentiscope_read_snapshot', 'sentiscope_record_web_fact', 'sentiscope_compare', 'sentiscope_propose', 'sentiscope_observe', 'sentiscope_coverage']);
 });
 
-test('失败会话仍保留身份，SDK 事件脱敏，空文本有安全回退', async () => {
-  const events: Array<Record<string, unknown>> = [];
+test('失败会话仍保留身份，Host 不订阅也不复制 SDK 遥测', async () => {
   const identities: Array<Record<string, unknown>> = [];
+  let subscriptions = 0;
   const runtime = new PiAgentRuntime({
     skillsDir: join(repoRoot, 'skills'), cwd: makeDataDir(), egress: { allowedDimensions: [], forbiddenValues: ['内部秘密'] },
+    sessionFactory: async () => ({ session: {
+      prompt: async () => { const error = new Error('aborted'); error.name = 'AbortError'; throw error; },
+      getLastAssistantText: () => undefined,
+      subscribe: () => { subscriptions += 1; return () => undefined; },
+      abort: async () => undefined, dispose: () => undefined,
+      sessionManager: { getSessionId: () => 'session-failed' },
+      agent: { state: { model: { id: 'model-failed', provider: 'test' } } },
+    } }),
+  });
+  const tools = { profile: async () => ({ rows: 0, quality: dataset.quality, fields: [], steps: 0 }) } as unknown as ExplorationTools;
+  await assert.rejects(runtime.run({ tools, dataset, onSession: identity => identities.push(identity) }), /aborted/);
+  assert.equal(identities[0]!.sessionId, 'session-failed');
+  assert.equal(subscriptions, 0);
+});
+
+test('流式遥测不进入 run 记录：2000 条 SDK 事件不产生写放大', async () => {
+  const store = new WorkspaceStore(makeDataDir());
+  store.insertDataset(dataset);
+  let subscriptions = 0;
+  const runtime = new PiAgentRuntime({
+    skillsDir: join(repoRoot, 'skills'), cwd: makeDataDir(),
     sessionFactory: async () => {
-      let listener: ((event: { type: string; [key: string]: unknown }) => void) | undefined;
+      let listener: ((event: { type: string; index: number }) => void) | undefined;
       return { session: {
-        prompt: async () => { listener?.({ type: 'secret', text: '内部秘密' }); const error = new Error('aborted'); error.name = 'AbortError'; throw error; },
-        getLastAssistantText: () => undefined,
-        subscribe: callback => { listener = callback; return () => undefined; },
+        prompt: async () => { for (let index = 0; index < 2000; index += 1) listener?.({ type: 'message_update', index }); },
+        getLastAssistantText: () => '完成',
+        subscribe: (callback: (event: { type: string; index: number }) => void) => { subscriptions += 1; listener = callback; return () => undefined; },
         abort: async () => undefined, dispose: () => undefined,
-        sessionManager: { getSessionId: () => 'session-failed' },
-        agent: { state: { model: { id: 'model-failed', provider: 'test' } } },
+        sessionManager: { getSessionId: () => 'session-stream' },
+        agent: { state: { model: { id: 'model-x', provider: 'test' } } },
       } };
     },
   });
+  const tools = { profile: async () => ({ rows: 1, quality: dataset.quality, fields: [], steps: 0 }) } as unknown as ExplorationTools;
+  const run = await runExploration({ store, dataset, runtime, runId: 'run-stream', now: '2026-11-01T00:00:00.000Z' });
+  assert.equal(run.status, 'completed', run.stopReason);
+  assert.equal(run.events.some(event => event.type.startsWith('sdk:')), false);
+  assert.equal(subscriptions, 0);
+  assert.equal(run.sessionId, 'session-stream');
+  store.close();
+});
+
+test('真实模型可按 provider:model-id 固定，未注册模型 fail-closed', async () => {
+  const captured: Record<string, unknown>[] = [];
+  const model = { provider: 'test-provider', id: 'model-x' };
+  const runtime = new PiAgentRuntime({
+    skillsDir: join(repoRoot, 'skills'), cwd: makeDataDir(), model: 'test-provider:model-x',
+    modelRuntimeFactory: async () => ({ getModel: (provider: string, id: string) => provider === 'test-provider' && id === 'model-x' ? model : null }),
+    sessionFactory: async options => {
+      captured.push(options);
+      return { session: { prompt: async () => undefined, getLastAssistantText: () => '受控完成', subscribe: () => () => undefined, abort: async () => undefined, dispose: () => undefined, sessionManager: { getSessionId: () => 'session-pin' }, agent: { state: { model } } } };
+    },
+  });
   const tools = { profile: async () => ({ rows: 0, quality: dataset.quality, fields: [], steps: 0 }) } as unknown as ExplorationTools;
-  await assert.rejects(runtime.run({ tools, dataset, onSdkEvent: event => events.push(event), onSession: identity => identities.push(identity) }), /aborted/);
-  assert.equal(identities[0]!.sessionId, 'session-failed');
-  assert.equal(events[0]!.text, '[REDACTED]');
+  const outcome = await runtime.run({ tools, dataset });
+  assert.equal(outcome.model, 'test-provider:model-x');
+  assert.equal(captured[0]!.model, model);
+  assert.ok(captured[0]!.modelRuntime);
+  const missing = new PiAgentRuntime({ skillsDir: join(repoRoot, 'skills'), cwd: makeDataDir(), model: 'test-provider:nope', modelRuntimeFactory: async () => ({ getModel: () => null }) });
+  await assert.rejects(missing.run({ tools, dataset }), /model_unavailable:test-provider:nope/);
 });

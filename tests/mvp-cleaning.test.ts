@@ -58,3 +58,12 @@ function rawRowsSync(csv: string) {
     };
   });
 }
+
+test('CLN-02：亿元按确定性换算进入万元标准单位', () => {
+  const rawRows = [{ rowNumber: 2, values: { metric: 'revenue', entity: '行业', period: '2026Q3', value: '375367', unit: '亿元', closed: 'true', comparable: 'true', scope: '同一细分市场', currency: 'CNY', region: '同一地域' }, issues: [], source: { assetSha256: 'b'.repeat(64), kind: 'web' as const, locator: 'snapshot:snap-1:quote:0-10' } }];
+  const dataset = standardizeDataset({ name: '外部基准', version: 1, now: NOW, sourceAssetIds: ['asset-b'], rawRows });
+  assert.equal(dataset.rows[0]!.value, 3753670000);
+  assert.equal(dataset.rows[0]!.unit, '万元');
+  assert.equal(dataset.rows[0]!.quality, 'usable');
+  assert.equal(dataset.rows[0]!.issues.includes('unknown_unit'), false);
+});
