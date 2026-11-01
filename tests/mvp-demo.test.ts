@@ -34,8 +34,11 @@ test('DEMO/E2E：qualified 演示经本地 fixture Provider 走通搜索→快�
     research: createDemoResearch(store, FIXTURES),
   });
   assert.equal(run.status, 'completed', run.stopReason);
-  assert.equal(run.candidateIds.length, 4);
+  assert.equal(run.candidateIds.length, 5);
   assert.deepEqual([run.budget.usedSearches, run.budget.usedFetches, run.budget.usedSnapshotReads], [2, 2, 2]);
+  const industrySnapshot = store.listSnapshots(run.id).find(snapshot => snapshot.contentType === 'application/pdf')!;
+  assert.equal(industrySnapshot.pdfPages?.count, 3);
+  assert.match(industrySnapshot.text, /30900 wan yuan/);
   assert.equal(store.listSnapshots(run.id).length, 2);
   assert.equal(store.listSearchEvents(run.id).filter(event => event.kind === 'search').length, 2);
   assert.equal(store.listSnapshotReads(run.id).length, 2);
@@ -56,7 +59,7 @@ test('DEMO：未配置搜索 Provider 时降级为待补证，不伪造外部基
   const { store, dataset } = await workspace();
   const run = await runExploration({ store, dataset, runtime: createDemoRuntime(dataset, 'qualified'), runId: 'run-demo-offline', now: NOW, maxToolCalls: 40 });
   assert.equal(run.status, 'completed', run.stopReason);
-  assert.equal(run.candidateIds.length, 2);
+  assert.equal(run.candidateIds.length, 3);
   assert.equal(store.listObservations(run.id).filter(observation => observation.status === 'needs_evidence' && observation.summary.includes('未取得快照')).length, 2);
   assert.equal(store.listSnapshots(run.id).length, 0);
   assert.equal(store.getDataset(run.datasetId)!.rows.some(row => row.source.kind === 'web'), false);
@@ -72,7 +75,6 @@ test('DEMO/UI-04：limited 演示如实呈现被拒请求与配额耗尽', async
   assert.equal(run.status, 'completed', run.stopReason);
   assert.equal(run.candidateIds.length, 1);
   assert.deepEqual([run.budget.usedSearches, run.budget.usedFetches, run.budget.usedSnapshotReads], [1, 1, 1]);
-  assert.ok(run.events.some(event => event.type === 'research_error' && event.details?.error === 'content_type_rejected'));
   assert.ok(store.listSearchEvents(run.id).some(event => event.error === 'search_quota_exhausted'));
   assert.ok(store.listObservations(run.id).some(observation => observation.status === 'needs_evidence' && observation.summary.includes('竞对')));
   store.close();

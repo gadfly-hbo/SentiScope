@@ -249,7 +249,7 @@ test('WEB-04：Host 拒绝的检索请求以错误值回到 Agent，运行可继
     lookup: async () => [{ address: PUBLIC_IP, family: 4 }],
     transport: async (url: URL) => url.pathname === '/robots.txt'
       ? { status: 200, headers: {}, body: Buffer.from(''), remoteAddress: PUBLIC_IP }
-      : { status: 200, headers: { 'content-type': 'application/pdf' }, body: Buffer.from('pdf-bytes'), remoteAddress: PUBLIC_IP },
+      : { status: 200, headers: { 'content-type': 'application/octet-stream' }, body: Buffer.from('pdf-bytes'), remoteAddress: PUBLIC_IP },
   });
   const runtime = new ControlledRuntime(async tools => {
     const search = await tools.webSearch({ query: '行业报告' }) as { ok: boolean; hits: Array<{ url: string }> };
@@ -264,5 +264,53 @@ test('WEB-04：Host 拒绝的检索请求以错误值回到 Agent，运行可继
   assert.equal(run.status, 'completed', run.stopReason);
   assert.deepEqual(run.events.filter(event => event.type === 'research_error').map(event => event.details?.error), ['content_type_rejected', 'snapshot_not_found']);
   assert.equal(run.budget.usedFetches, 0);
+  store.close();
+});
+
+test('CMP2-01：环比上一期比较成立；非紧邻期间 fail-closed 为待补证', async () => {
+  const store = new WorkspaceStore(makeDataDir());
+  const data = dataset([
+    row('revenue', '华东', '2026-09', 880, '万元', 1),
+    row('revenue', '华东', '2026-08', 1010, '万元', 2),
+    row('revenue', '华东', '2026-07', 990, '万元', 3),
+  ]); store.insertDataset(data); seedAssets(store, data);
+  const runtime = new ControlledRuntime(async tools => {
+    await tools.setCoverage(['华东 2026-09 收入与上一期 2026-08 对比']);
+    const mom = await tools.compare({ definitionId: 'revenue-mom', actualRowId: 'row-1', benchmarkRowId: 'row-2', selectionContext: '华东 2026-09 收入与上一期 2026-08 对比' });
+    assert.equal(mom.comparisonType, 'mom');
+    assert.equal(mom.status, 'qualified', mom.reason);
+    assert.equal(mom.gap, -130);
+    assert.equal(mom.gapRate, -12.8713);
+    const gap = await tools.compare({ definitionId: 'revenue-mom', actualRowId: 'row-1', benchmarkRowId: 'row-3', selectionContext: '华东 2026-09 收入与上一期 2026-08 对比' });
+    assert.equal(gap.status, 'needs_evidence');
+    assert.equal(gap.reason, '比较口径不一致');
+    return { stopReason: '环比校验完成' };
+  });
+  const run = await runExploration({ store, dataset: data, runtime, runId: 'run-mom', now: NOW });
+  assert.equal(run.status, 'completed', run.stopReason);
+  store.close();
+});
+
+test('CMP2-02：同级对比要求不同实体且同口径；选择理由不足被拒', async () => {
+  const store = new WorkspaceStore(makeDataDir());
+  const data = dataset([
+    row('revenue', '华东', '2026-09', 880, '万元', 1),
+    row('revenue', '华南', '2026-09', 1050, '万元', 2),
+  ]); store.insertDataset(data); seedAssets(store, data);
+  const context = '选择华南作为同级对照：同层级最大区域，同指标同单位同期间，口径一致';
+  const runtime = new ControlledRuntime(async tools => {
+    await tools.setCoverage([context]);
+    await assert.rejects(tools.compare({ definitionId: 'entity-peer', actualRowId: 'row-1', benchmarkRowId: 'row-2', selectionContext: '太短' }), /peer_selection_context_required/);
+    const peer = await tools.compare({ definitionId: 'entity-peer', actualRowId: 'row-1', benchmarkRowId: 'row-2', selectionContext: context });
+    assert.equal(peer.comparisonType, 'peer');
+    assert.equal(peer.thresholdVersion, 'entity-peer@v1');
+    assert.equal(peer.status, 'observation', `从严阈值 20% 下 −16.19% 不应成候选：${peer.reason}`);
+    const same = await tools.compare({ definitionId: 'entity-peer', actualRowId: 'row-1', benchmarkRowId: 'row-1', selectionContext: context });
+    assert.equal(same.status, 'needs_evidence');
+    assert.equal(same.reason, '比较口径不一致');
+    return { stopReason: '同级对比校验完成' };
+  });
+  const run = await runExploration({ store, dataset: data, runtime, runId: 'run-peer', now: NOW });
+  assert.equal(run.status, 'completed', run.stopReason);
   store.close();
 });

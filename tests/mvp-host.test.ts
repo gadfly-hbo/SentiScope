@@ -19,18 +19,24 @@ test('切片二宿主：合成端到端 API、零候选、复核、导入与本�
   try {
     assert.equal((await fetch(`${host.url}/health`)).status, 200);
     const candidates = await (await fetch(`${host.url}/api/candidates`)).json() as { candidates: CaseCandidate[] };
-    assert.equal(candidates.candidates.length, 4);
+    assert.equal(candidates.candidates.length, 5);
     const datasets = await (await fetch(`${host.url}/api/datasets`)).json() as { datasets: DatasetVersion[] };
     assert.equal(datasets.datasets.length, 5);
     assert.ok(datasets.datasets[0].rows.length >= 10);
     const runs = await (await fetch(`${host.url}/api/runs`)).json() as { runs: ExplorationRun[] };
     assert.equal(runs.runs.length, 1);
-    assert.equal(runs.runs[0].candidateIds.length, 4);
-    const detail = await (await fetch(`${host.url}/api/runs/${runs.runs[0].id}`)).json() as { run: ExplorationRun; searchEvents: Array<{ kind: string }>; snapshots: Array<{ id: string; text?: string }>; snapshotReads: unknown[] };
+    assert.equal(runs.runs[0].candidateIds.length, 5);
+    const detail = await (await fetch(`${host.url}/api/runs/${runs.runs[0].id}`)).json() as { run: ExplorationRun; searchEvents: Array<{ kind: string }>; snapshots: Array<{ id: string; text?: string; contentType: string; pdfPages?: { count: number } }>; snapshotReads: unknown[] };
     assert.equal(detail.searchEvents.filter(event => event.kind === 'search').length, 2);
     assert.equal(detail.snapshots.length, 2);
     assert.equal(detail.snapshots[0].text, undefined);
     assert.equal(detail.snapshotReads.length, 2);
+    const pdfSnapshot = detail.snapshots.find(snapshot => snapshot.contentType === 'application/pdf')!;
+    assert.equal(pdfSnapshot.pdfPages?.count, 3);
+    const firstPage = await (await fetch(`${host.url}/api/snapshots/${pdfSnapshot.id}/text?offset=0&length=40`)).json() as { page?: number };
+    assert.equal(firstPage.page, 1);
+    const secondPage = await (await fetch(`${host.url}/api/snapshots/${pdfSnapshot.id}/text?offset=120&length=40`)).json() as { page?: number };
+    assert.equal(secondPage.page, 2);
     const snapshotText = await (await fetch(`${host.url}/api/snapshots/${detail.snapshots[0].id}/text?offset=0&length=80`)).json() as { text: string; totalLength: number };
     assert.equal(snapshotText.text.length <= 80, true);
     assert.ok(snapshotText.totalLength > 80);
@@ -136,7 +142,7 @@ test('切片三宿主：阈值配置生效、排除原因、指定数据集运�
   type Stats = { candidates: { total: number; review: number; retained: number; excluded: number }; hitRate: number | null; exclusionReasons: Record<string, number>; byType: Record<string, { review: number; retained: number; excluded: number }>; byDataset: Record<string, { review: number; retained: number; excluded: number }>; runs: Array<{ id: string; datasetId: string; datasetName: string | null; candidates: number; usage: unknown }>; config: { loaded: boolean; current: Array<{ id: string; thresholdVersion: string; threshold: number }>; overrides: Array<{ id: string }> }; configHistory: Array<{ id: string; version: number; threshold: number; reason: string }> };
   try {
     const first = await (await fetch(`${host.url}/api/trial-stats`)).json() as Stats;
-    assert.equal(first.candidates.total, 4);
+    assert.equal(first.candidates.total, 5);
     assert.equal(first.config.loaded, true);
     assert.equal(first.config.current.find(def => def.id === 'wait-target')!.threshold, 40);
     assert.equal(first.config.current.find(def => def.id === 'wait-target')!.thresholdVersion, 'wait-target@v2');

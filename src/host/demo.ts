@@ -13,15 +13,13 @@ export type DemoMode = 'qualified' | 'zero' | 'limited';
 const FIXTURE_IP = '93.184.216.34';
 const FIXTURE_PAGES: Record<string, { file: string; contentType: string }> = {
   'https://disclosure.synthetic.example/competitor-a-2026q3': { file: '竞对A_公开披露.html', contentType: 'text/html; charset=utf-8' },
-  'https://stats.synthetic.example/industry-2026q3': { file: '行业_公开统计.html', contentType: 'text/html; charset=utf-8' },
+  'https://stats.synthetic.example/industry-2026q3.pdf': { file: '行业_公开统计.pdf', contentType: 'application/pdf' },
   'https://news.synthetic.example/industry-recap': { file: '行业_公开统计.html', contentType: 'text/html; charset=utf-8' },
-  'https://reports.synthetic.example/industry-2026q3.pdf': { file: '行业_公开统计.html', contentType: 'application/pdf' },
 };
 const SEARCH_HITS = [
-  { url: 'https://stats.synthetic.example/industry-2026q3', title: '细分行业 2026Q3 统计（合成）', snippet: '行业收入增速 3.0%' },
+  { url: 'https://stats.synthetic.example/industry-2026q3.pdf', title: '细分行业 2026Q3 统计 PDF（合成）', snippet: '行业收入增速 3.0%' },
   { url: 'https://disclosure.synthetic.example/competitor-a-2026q3', title: '竞对 A 2026Q3 披露（合成）', snippet: '收入同比增速 7.1%' },
   { url: 'https://news.synthetic.example/industry-recap', title: '二手新闻转述（合成）', snippet: '据称行业增长约 3%' },
-  { url: 'https://reports.synthetic.example/industry-2026q3.pdf', title: '行业报告 PDF（合成）', snippet: '首版不支持 PDF 解析' },
 ];
 
 type ExternalFact = { quote: string; valueText: string; entity: string; period: string };
@@ -40,8 +38,8 @@ const EXTERNAL_SOURCES: ExternalSource[] = [
     query: '2026Q3 细分行业 收入 统计', urlPrefix: 'https://stats.synthetic.example/', metricId: 'revenue', unit: '万元', publishedAt: '2026-10-02',
     dimensions: { scope: '同一细分市场', currency: 'CNY', region: '同一地域', sourceType: 'primary', closed: 'true', comparable: 'true' },
     facts: [
-      { quote: '2026Q330900 万元3.0%同一地域、行业分类与季度', valueText: '30900', entity: '行业', period: '2026Q3' },
-      { quote: '2025Q330000 万元—同一地域、行业分类与季度', valueText: '30000', entity: '行业', period: '2025Q3' },
+      { quote: '2026Q3 industry revenue was 30900 wan yuan, up 3.0 percent.', valueText: '30900', entity: '行业', period: '2026Q3' },
+      { quote: '2025Q3 industry revenue base was 30000 wan yuan.', valueText: '30000', entity: '行业', period: '2025Q3' },
     ],
   },
 ];
@@ -68,7 +66,7 @@ export function createDemoResearch(store: WorkspaceStore, fixturesDir: string, b
       if (url.pathname === '/robots.txt') return fixtureResponse('User-agent: *\nAllow: /', 'text/plain; charset=utf-8');
       const page = FIXTURE_PAGES[url.toString()];
       if (!page) return fixtureResponse('not found', 'text/plain; charset=utf-8', 404);
-      return fixtureResponse(readFileSync(join(fixturesDir, page.file)).toString('utf8'), page.contentType);
+      return fixtureResponse(readFileSync(join(fixturesDir, page.file)), page.contentType);
     },
   });
 }
@@ -101,6 +99,8 @@ export function createDemoRuntime(dataset: DatasetVersion, mode: DemoMode = 'qua
     if (!industry) await tools.observe({ summary: '行业基准未取得快照；搜索摘要不作为证据，行业差距保留为待补证', status: 'needs_evidence' });
     await tools.compare({ definitionId: 'revenue-target', actualRowId: find('revenue', '华北', '2026-09').rowId, benchmarkRowId: find('revenue.target', '华北', '2026-09').rowId, selectionContext });
     await tools.compare({ definitionId: 'revenue-history', actualRowId: find('orders', '线上', '2026-09').rowId, benchmarkRowId: find('orders', '线上', '2025-09').rowId, selectionContext });
+    const mom = await tools.compare({ definitionId: 'revenue-mom', actualRowId: find('revenue', '华东', '2026-09').rowId, benchmarkRowId: find('revenue', '华东', '2026-08').rowId, selectionContext });
+    await tools.compare({ definitionId: 'entity-peer', actualRowId: find('revenue', '华东', '2026-09').rowId, benchmarkRowId: find('revenue', '华南', '2026-09').rowId, selectionContext: '选择华南作为同级对照：同层级最大区域，同指标同单位同期间，口径一致' });
     const propose = async (comparisonId: string, title: string, interpretation: string, nextStep: string, unknown: string, refutationText: string, evidence: StandardRow['source'][]) => {
       const refutation = await tools.observe({ summary: refutationText, role: 'refutation', comparisonId, evidence });
       await tools.propose({ comparisonId, title, interpretation, nextStep, unknown, refutationObservationId: refutation.id });
@@ -109,8 +109,9 @@ export function createDemoRuntime(dataset: DatasetVersion, mode: DemoMode = 'qua
     await propose(history.id, '西南区域收入同比下降 6.2%', '同期历史差距成立，原因未知', '复核同期范围与历史证据', '原因未知', '已检查部分期间和基数异常', history.evidence);
     if (competitor) await propose(competitor.id, '自身收入增速低于竞对 A 12.3 个百分点', '同期增速差成立，不代表竞对导致自身下滑', '复核双方披露口径与快照原文', '不能证明客户或份额变化原因', '已检查披露范围、发布时间与并表口径', competitor.evidence);
     if (industry) await propose(industry.id, '自身收入增速低于细分行业 8.2 个百分点', '同期行业增速差成立，不代表行业造成自身变化', '复核行业分类与统计范围', '行业平均不代表每个参与者', '已检查行业范围和数据发布时间', industry.evidence);
-    const proposed = 2 + Number(Boolean(competitor)) + Number(Boolean(industry));
-    return { stopReason: `四类比较完成；${proposed} 个候选通过门禁，近失项与未取得快照的基准仅留观察` };
+    if (mom.status === 'qualified') await propose(mom.id, '华东区域 9 月收入环比下降 12.9%', '上一期差距成立，原因未知', '复核上一期口径与节奏差异', '环比波动构成未知', '已检查华南华北同月环比均为正，非全局性回落', mom.evidence);
+    const proposed = 2 + Number(Boolean(competitor)) + Number(Boolean(industry)) + Number(mom.status === 'qualified');
+    return { stopReason: `五类比较完成（含环比与同级对比观察）；${proposed} 个候选通过门禁，近失项、同级对比（region 口径不一致）与未取得快照的基准留待补证` };
   });
 }
 
@@ -140,15 +141,13 @@ async function limitedRun(tools: ExplorationTools, find: (metricId: string, enti
   await tools.propose({ comparisonId: target.id, title: '华东区域 9 月收入低于目标 120 万元', interpretation: '已结期目标差距成立，原因未知', nextStep: '复核目标来源与区域拆分', unknown: '原因未知', refutationObservationId: refutation.id });
   const search = await tools.webSearch({ query: '2026Q3 细分行业 收入增速 统计' }) as { ok: boolean; hits?: Array<{ url: string }>; error?: string };
   if (!search.ok || !search.hits) return { stopReason: '搜索不可用；仅提交内部数据支持的目标候选' };
-  const pdf = search.hits.find(hit => hit.url.endsWith('.pdf'));
-  if (pdf) await tools.fetchPage({ url: pdf.url });
   const industry = search.hits.find(hit => hit.url.startsWith('https://stats.'));
   if (!industry) return { stopReason: '没有一手行业来源；不以搜索摘要补齐' };
   const fetched = await tools.fetchPage({ url: industry.url }) as { ok: boolean; snapshotId?: string };
   if (!fetched.ok || !fetched.snapshotId) return { stopReason: '行业快照读取失败；差距降为待补证' };
   await tools.readSnapshot({ snapshotId: fetched.snapshotId, offset: 0, length: 400 });
   await tools.recordWebFact({
-    snapshotId: fetched.snapshotId, quote: '2026Q330900 万元3.0%同一地域、行业分类与季度', valueText: '3.0%', metricId: 'revenue.growth', entity: '行业', period: '2026Q3', unit: '%',
+    snapshotId: fetched.snapshotId, quote: '2026Q3 industry revenue was 30900 wan yuan, up 3.0 percent.', valueText: '30900', metricId: 'revenue', entity: '行业', period: '2026Q3', unit: '万元',
     dimensions: { scope: '同一细分市场', currency: 'CNY', region: '同一地域', sourceType: 'primary', publishedAt: '2026-10-02', closed: 'true', comparable: 'true' },
   });
   const exhausted = await tools.webSearch({ query: '2026Q3 竞对 A 收入披露' }) as { ok: boolean; error?: string };
@@ -157,6 +156,6 @@ async function limitedRun(tools: ExplorationTools, find: (metricId: string, enti
   return { stopReason: '搜索与读取配额耗尽；1 个候选通过门禁，竞对增速差保留为待补证' };
 }
 
-function fixtureResponse(body: string, contentType: string, status = 200): WebResponse {
-  return { status, headers: { 'content-type': contentType }, body: Buffer.from(body), remoteAddress: FIXTURE_IP };
+function fixtureResponse(body: string | Buffer, contentType: string, status = 200): WebResponse {
+  return { status, headers: { 'content-type': contentType }, body: Buffer.isBuffer(body) ? body : Buffer.from(body), remoteAddress: FIXTURE_IP };
 }
