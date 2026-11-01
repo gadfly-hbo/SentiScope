@@ -4,6 +4,7 @@ const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g,char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 let candidates = [], datasets = [], sources = [], runs = [], currentDataset = null, currentRun = null;
 let searchEvents = [], snapshots = [], snapshotReads = [], webResearch = { enabled:false, providers:[], preferredDomains:[], budget:null };
+let trialStats = null, selectedReason = null;
 let boardView = 'cards', selectedId = null, activeTab = 'overview', lastFocused = null, toastTimer;
 const headers = { 'x-sentiscope-client': '1' };
 
@@ -28,14 +29,14 @@ function normalizeCandidate(raw) {
     formula: comparison.formula, unknown: raw.unknown, support: raw.support, counter: raw.refutation,
     singleSource: raw.singleSourceLimitation ?? null,
     evidence: comparison.evidence,
-    history: [...raw.reviews.map(review => [review.createdAt, `用户${STATUS[review.status].label}：${review.note || '未填写说明'}`]), [raw.createdAt,'候选门禁通过，进入待复核']],
+    history: [...raw.reviews.map(review => [review.createdAt, `用户${STATUS[review.status].label}${review.reason ? `（${review.reason}）` : ''}：${review.note || '未填写说明'}`]), [raw.createdAt,'候选门禁通过，进入待复核']],
   };
 }
 const decorated = () => candidates.map(normalizeCandidate);
 const statusLabel = status => `<span class="status-text status-${status}">${STATUS[status].label}</span>`;
 function visibleCandidates() {
-  const query = $('candidate-search').value.trim().toLowerCase(), status = $('status-filter').value;
-  return decorated().filter(c => (status === 'all' || c.status === status) && (!query || `${c.title}${c.metric}${c.entity}`.toLowerCase().includes(query)));
+  const query = $('candidate-search').value.trim().toLowerCase(), status = $('status-filter').value, datasetId = $('candidate-dataset-filter').value;
+  return decorated().filter(c => (status === 'all' || c.status === status) && (datasetId === 'all' || c.raw.datasetId === datasetId) && (!query || `${c.title}${c.metric}${c.entity}`.toLowerCase().includes(query)));
 }
 function card(c) {
   return `<article class="candidate-card" data-id="${c.id}" tabindex="0" aria-label="查看候选 ${escapeHtml(c.title)}"><div class="card-top"><span class="compare-type">${TYPES[c.type]}</span>${statusLabel(c.status)}<span class="card-open">打开</span></div><h2>${escapeHtml(c.title)}</h2><div><div class="gap-number">${escapeHtml(c.gap)}</div><div class="gap-label">${escapeHtml(c.gapLabel)} · ${escapeHtml(c.period)}</div></div><div class="card-section"><div class="card-label">当前解释</div><div class="clamp">${escapeHtml(c.interpretation)}</div></div><div class="card-section next-step"><div class="card-label">下一步</div><div class="clamp">${escapeHtml(c.next)}</div></div><div class="card-footer"><span>${c.sources} 个证据 · 含反证</span><span>${escapeHtml(c.updated)}</span></div></article>`;
@@ -76,15 +77,20 @@ function renderDialog() {
   $('dialog-content').innerHTML = activeTab === 'overview' ? overview(c) : activeTab === 'calculation' ? calculation(c) : activeTab === 'evidence' ? evidence(c) : history(c);
 }
 function openCandidate(id) {
-  selectedId = id; activeTab = 'overview'; lastFocused = document.activeElement; renderDialog();
+  selectedId = id; activeTab = 'overview'; lastFocused = document.activeElement; selectedReason = null;
+  document.querySelectorAll('#reason-chips .chip').forEach(chip => chip.classList.remove('active'));
+  renderDialog();
   $('candidate-dialog').showModal(); $('dialog-close').focus();
 }
 async function review(status) {
   try {
     const note = $('review-note').value.trim();
-    const { candidate } = await api(`/api/candidates/${selectedId}/review`, { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({status,note}) });
+    if (status === 'excluded' && !selectedReason) { toast('排除候选前请先选择一个排除原因（口径不符／证据不足／重复／其他）。'); return; }
+    const { candidate } = await api(`/api/candidates/${selectedId}/review`, { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({status,note,...(status === 'excluded' ? { reason: selectedReason } : {})}) });
     candidates = candidates.map(item => item.id === candidate.id ? candidate : item);
-    $('review-note').value = ''; renderBoard(); renderDialog(); toast(`${STATUS[status].label}：复核状态与说明已保存，未创建 Case。`);
+    $('review-note').value = ''; selectedReason = null; document.querySelectorAll('#reason-chips .chip').forEach(chip => chip.classList.remove('active'));
+    renderBoard(); renderDialog(); loadTrial().catch(() => undefined);
+    toast(`${STATUS[status].label}：复核状态与说明已保存${status === 'excluded' ? '，原因已进入统计' : ''}，未创建 Case。`);
   } catch (error) { toast(`复核失败：${error.message}`); }
 }
 async function openEvidence(index) {
@@ -146,7 +152,7 @@ async function openEvidence(index) {
 function setView(name) {
   document.querySelectorAll('.view').forEach(view => view.classList.toggle('active',view.id === `view-${name}`));
   document.querySelectorAll('.nav-button').forEach(button => button.classList.toggle('active',button.dataset.nav === name && (name !== 'sources' || button.textContent.includes('内部文件'))));
-  const titles = {candidates:'Case 候选',exploration:'探索运行',datasets:'标准数据集',sources:'来源资产'};
+  const titles = {candidates:'Case 候选',exploration:'探索运行',trial:'试用台账',datasets:'标准数据集',sources:'来源资产'};
   $('topbar-title').textContent = titles[name]; $('app').classList.remove('sidebar-open');
 }
 function renderPreview(kind, highlightIndex = -1) {
@@ -221,6 +227,8 @@ async function loadCandidates() { candidates = (await api('/api/candidates')).ca
 async function loadDatasets() {
   datasets = (await api('/api/datasets')).datasets; currentDataset = datasets[0] || null;
   document.querySelector('[data-nav="datasets"] .nav-count').textContent = datasets.length;
+  $('run-dataset').innerHTML = `<option value="">最新导入（默认）</option>${datasets.map(dataset => `<option value="${dataset.id}">${escapeHtml(dataset.name)} v${dataset.version}</option>`).join('')}`;
+  $('candidate-dataset-filter').innerHTML = `<option value="all">全部数据集</option>${datasets.map(dataset => `<option value="${dataset.id}">${escapeHtml(dataset.name)} v${dataset.version}</option>`).join('')}`;
   renderDataset();
 }
 async function loadSources() {
@@ -237,9 +245,30 @@ async function loadRuns() {
   document.querySelector('.nav-button[data-nav="exploration"] .nav-count').textContent = runs.length;
   if (runs[0]) renderRun(await api(`/api/runs/${runs[0].id}`));
 }
+async function loadTrial() {
+  trialStats = await api('/api/trial-stats');
+  const decided = trialStats.candidates.retained + trialStats.candidates.excluded;
+  const cost = trialStats.runs.reduce((sum, run) => sum + (run.usage?.totalTokens ?? 0), 0);
+  const costTotal = trialStats.runs.some(run => run.usage?.costTotal != null) ? trialStats.runs.reduce((sum, run) => sum + (run.usage?.costTotal ?? 0), 0) : null;
+  $('trial-summary').innerHTML = `<div class="summary-item"><strong>${trialStats.hitRate ?? '—'}${trialStats.hitRate != null ? '%' : ''}</strong><span>候选命中率（保留 ÷ 已裁定 ${decided}）</span></div><div class="summary-item"><strong>${trialStats.candidates.total}</strong><span>候选 · 待复核 ${trialStats.candidates.review} · 排除 ${trialStats.candidates.excluded}</span></div><div class="summary-item"><strong>${trialStats.runs.length}</strong><span>运行 · ${new Set(trialStats.runs.map(run => run.datasetId)).size} 个数据集</span></div><div class="summary-item"><strong>${Math.round(cost / 100) / 10}k tok</strong><span>累计 token${costTotal != null ? ` · 费用 ${Math.round(costTotal * 1e6) / 1e6}` : ' · 费用不可得'}</span></div>`;
+  const reasons = Object.entries(trialStats.exclusionReasons);
+  $('trial-reasons').innerHTML = reasons.length ? reasons.map(([reason, count]) => `<span class="reason-chip">${escapeHtml(reason)} ×${count}</span>`).join('') : '<span class="muted" style="font-size:12px">暂无排除记录。</span>';
+  const datasetsSeen = [...new Set(trialStats.runs.map(run => `${run.datasetId}|${run.datasetName ?? run.datasetId}`))];
+  $('trial-dataset-filter').innerHTML = `<option value="all">全部数据集（${datasetsSeen.length}）</option>${datasetsSeen.map(([id, name]) => `<option value="${id}">${escapeHtml(String(name))}</option>`).join('')}`;
+  renderTrialRuns();
+  const overrides = new Map(trialStats.config.overrides.map(override => [override.id, override]));
+  $('trial-config').innerHTML = `<dl class="kv">${trialStats.config.current.map(def => `<dt>${escapeHtml(def.id)}</dt><dd>阈值 ${def.threshold}（默认 ${trialStats.config.defaults.find(item => item.id === def.id)?.threshold ?? '?'}）· ${escapeHtml(def.thresholdVersion)}</dd>`).join('')}</dl><p class="source-meta" style="margin-top:10px">${trialStats.config.loaded ? '配置文件已生效' : '未配置 benchmarks.json，使用代码默认'}；运行期不可修改，变更需在数据目录批准后重启。变更记录：${trialStats.configHistory.length ? trialStats.configHistory.map(entry => `${entry.id}@v${entry.version}（阈值 ${entry.threshold}${entry.reason ? `，${escapeHtml(entry.reason)}` : ''}）`).join('；') : '无'}</p>`;
+}
+function renderTrialRuns() {
+  if (!trialStats) return;
+  const filter = $('trial-dataset-filter').value;
+  const rows = trialStats.runs.filter(run => filter === 'all' || run.datasetId === filter);
+  $('trial-runs-body').innerHTML = rows.map(run => `<tr><td class="mono">${escapeHtml(run.id)}</td><td>${escapeHtml(run.datasetName ?? run.datasetId)}</td><td class="mono">${escapeHtml(run.model)}</td><td>${run.candidates}</td><td>${run.searches} / ${run.fetches} / ${run.reads}</td><td>${run.usage ? `${Math.round(run.usage.totalTokens / 100) / 10}k` : '—'}</td><td>${run.usage?.costTotal != null ? String(Math.round(run.usage.costTotal * 1e6) / 1e6) : '不可得'}</td><td>${escapeHtml(run.status)}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">没有符合条件的运行。</td></tr>';
+}
 async function startRun(mode) {
   try {
-    const { runId } = await api('/api/runs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({mode})});
+    const datasetId = $('run-dataset').value || undefined;
+    const { runId } = await api('/api/runs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({mode,...(datasetId ? { datasetId } : {})})});
     setView('exploration'); toast('探索已启动，正在读取真实运行状态…');
     let finished = false;
     for (let attempt = 0; attempt < 100; attempt += 1) {
@@ -247,7 +276,7 @@ async function startRun(mode) {
       if (detail.run.status !== 'running') { finished = true; break; }
       await new Promise(resolve => setTimeout(resolve,200));
     }
-    if (finished) { await Promise.all([loadCandidates(),loadRuns(),loadDatasets(),loadSources()]); toast('探索运行已结束，候选、观察、数据版本与搜索快照已更新。'); }
+    if (finished) { await Promise.all([loadCandidates(),loadRuns(),loadDatasets(),loadSources(),loadTrial()]); toast('探索运行已结束，候选、观察、数据版本、搜索快照与试用台账已更新。'); }
     else toast('探索仍在运行；可稍后刷新，不会将超时当作完成。');
   } catch (error) { toast(`探索失败：${error.message}`); }
 }
@@ -255,7 +284,21 @@ function toggleImport(open) { $('app').classList.toggle('import-open',open); }
 
 $('candidate-board').addEventListener('click',event => { const item = event.target.closest('[data-id]'); if (item) openCandidate(item.dataset.id); });
 $('candidate-board').addEventListener('keydown',event => { if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('[data-id]')) { event.preventDefault(); openCandidate(event.target.dataset.id); } });
-$('candidate-search').addEventListener('input',renderBoard); $('status-filter').addEventListener('change',renderBoard);
+$('candidate-search').addEventListener('input',renderBoard); $('status-filter').addEventListener('change',renderBoard); $('candidate-dataset-filter').addEventListener('change',renderBoard);
+$('trial-dataset-filter').addEventListener('change',renderTrialRuns);
+document.querySelectorAll('#reason-chips .chip').forEach(chip => chip.addEventListener('click',() => {
+  document.querySelectorAll('#reason-chips .chip').forEach(item => item.classList.remove('active'));
+  chip.classList.add('active'); selectedReason = chip.dataset.reason;
+}));
+$('trial-report').addEventListener('click',async () => {
+  try {
+    const { report } = await api('/api/trial-report');
+    const blob = new Blob([report],{type:'text/markdown'});
+    const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `sentiscope-trial-report-${new Date().toISOString().slice(0,10)}.md`;
+    link.click(); URL.revokeObjectURL(link.href);
+    toast('试用报告已在本机生成并下载：统计与建议，不自动生效。');
+  } catch (error) { toast(`报告生成失败：${error.message}`); }
+});
 document.querySelectorAll('[data-board-view]').forEach(button => button.addEventListener('click',() => { boardView = button.dataset.boardView; document.querySelectorAll('[data-board-view]').forEach(item => item.classList.toggle('active',item === button)); renderBoard(); }));
 document.querySelectorAll('[data-nav]').forEach(button => button.addEventListener('click',() => setView(button.dataset.nav)));
 $('dialog-close').addEventListener('click',() => $('candidate-dialog').close());
@@ -298,5 +341,5 @@ window.addEventListener('resize',syncSidebarState); syncSidebarState();
 $('candidate-board').innerHTML = '<div class="empty-state">正在加载本机工作区…</div>';
 $('asset-list').innerHTML = ''; $('search-event-list').innerHTML = '';
 document.querySelector('#view-datasets .dataset-grid').innerHTML = '';
-$('activity-list').innerHTML = ''; $('run-summary').innerHTML = '';
-Promise.all([loadCandidates(),loadDatasets(),loadSources(),loadRuns()]).catch(error => toast(`工作区加载失败：${error.message}`));
+$('activity-list').innerHTML = ''; $('run-summary').innerHTML = ''; $('trial-summary').innerHTML = ''; $('trial-runs-body').innerHTML = ''; $('trial-config').innerHTML = ''; $('trial-reasons').innerHTML = '';
+Promise.all([loadCandidates(),loadDatasets(),loadSources(),loadRuns(),loadTrial()]).catch(error => toast(`工作区加载失败：${error.message}`));

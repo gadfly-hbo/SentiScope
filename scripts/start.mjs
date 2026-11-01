@@ -38,6 +38,9 @@ console.log(`[SentiScope] 探索模式：${realModel ? '真实模型（使用已
 console.log(`[SentiScope] 公网检索：${host.research.enabled
   ? `启用，Provider=${host.research.providers.join(',')}，优先域=${host.research.preferredDomains.join(',') || '空'}，预算=${JSON.stringify(host.research.budget)}`
   : `未配置（${join(dataDir, 'search.json')}），探索只使用导入数据`}${realModel ? '' : '；演示 limited 运行使用本地 fixture Provider，不出网'}`);
+console.log(`[SentiScope] 基准阈值：${host.benchmarks.loaded
+  ? `benchmarks.json 已生效，覆盖 ${host.benchmarks.overrides.map(override => `${override.id}@v${override.version}=${override.threshold}`).join('、') || '（空）'}`
+  : `未配置（${join(dataDir, 'benchmarks.json')}），使用代码默认`}；仅启动期加载，运行期不可修改`);
 
 try {
   const probe = await probeSession(join(root, 'skills'));

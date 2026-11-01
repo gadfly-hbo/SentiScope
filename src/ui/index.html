@@ -173,6 +173,11 @@
   .snapshot-detail mark { padding:1px 4px; background:var(--accent-soft); color:var(--accent); font-weight:600; }
   .hit-list { list-style:none; margin-top:9px; }
   .hit-list li { padding:8px 0; border-top:1px solid var(--border); font-size:11px; line-height:1.7; overflow-wrap:anywhere; }
+  .reason-bar { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  .reason-chip { padding:2px 8px; border-radius:5px; background:var(--subtle); color:var(--muted); font-size:11px; }
+  .chip-row { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .chip { min-height:26px; padding:3px 10px; border:1px solid var(--border); border-radius:13px; background:var(--surface); color:var(--ink); font-size:11px; }
+  .chip.active { border-color:var(--accent); background:var(--accent-soft); color:var(--accent); font-weight:600; }
   dialog.candidate-dialog { position:fixed; inset:20px 20px 20px auto; width:min(1040px,calc(100vw - 40px)); max-width:none; height:calc(100dvh - 40px); max-height:none; margin:0; padding:0; border:1px solid var(--border); border-radius:12px; background:var(--canvas); color:var(--ink); box-shadow:var(--shadow); overflow:hidden; }
   dialog.candidate-dialog::backdrop { background:rgba(24,20,35,.38); }
   .dialog-shell { height:100%; display:flex; flex-direction:column; }
@@ -253,6 +258,7 @@
       <div class="nav-label">发现与复核</div>
       <button class="nav-button active" data-nav="candidates"><span class="nav-dot"></span>Case 候选<span class="nav-count" id="candidate-nav-count">5</span></button>
       <button class="nav-button" data-nav="exploration"><span class="nav-dot"></span>探索运行<span class="nav-count">1</span></button>
+      <button class="nav-button" data-nav="trial"><span class="nav-dot"></span>试用台账</button>
       <div class="nav-label">数据与来源</div>
       <button class="nav-button" data-nav="datasets"><span class="nav-dot"></span>标准数据集<span class="nav-count">3</span></button>
       <details class="source-tree" open>
@@ -273,6 +279,7 @@
             <div class="toolbar">
               <input class="search" id="candidate-search" type="search" placeholder="搜索候选、指标或实体" aria-label="搜索 Case 候选">
               <select class="select" id="status-filter" aria-label="筛选复核状态"><option value="all">全部状态</option><option value="review">待复核</option><option value="retained">已保留</option><option value="excluded">已排除</option></select>
+              <select class="select" id="candidate-dataset-filter" aria-label="按数据集筛选候选"><option value="all">全部数据集</option></select>
               <div class="segmented" aria-label="看板显示方式"><button class="segment active" data-board-view="cards">卡片</button><button class="segment" data-board-view="list">列表</button></div>
               <span class="toolbar-note">目标 · 历史 · 竞对 · 行业</span>
             </div>
@@ -283,7 +290,7 @@
 
         <section class="view" id="view-exploration">
           <div class="workspace">
-            <div class="page-head"><div class="page-head-main"><div class="eyebrow">Agent 工作轨迹与工具证据</div><h1>探索运行</h1><p class="page-desc">Agent 自主选择比较、搜索词与补证路径；Host 只提供数据、工具、权限、Provider 与预算。模型文本与搜索摘要都不直接成为证据。</p></div><div class="page-actions"><button class="btn" id="cancel-run" hidden>取消运行</button><button class="btn" id="zero-run-toggle">运行零候选样例</button><button class="btn" id="limited-run-toggle">运行配额受限样例</button><button class="btn" id="replay-run">运行合成探索</button></div></div>
+            <div class="page-head"><div class="page-head-main"><div class="eyebrow">Agent 工作轨迹与工具证据</div><h1>探索运行</h1><p class="page-desc">Agent 自主选择比较、搜索词与补证路径；Host 只提供数据、工具、权限、Provider 与预算。模型文本与搜索摘要都不直接成为证据。</p></div><div class="page-actions"><select class="select" id="run-dataset" aria-label="选择用于运行的数据集"></select><button class="btn" id="cancel-run" hidden>取消运行</button><button class="btn" id="zero-run-toggle">运行零候选样例</button><button class="btn" id="limited-run-toggle">运行配额受限样例</button><button class="btn" id="replay-run">运行合成探索</button></div></div>
             <div class="context-banner"><b>标准数据集 v3</b><span>模型：固定配置（未连接）</span><span>工具预算：18 / 25</span><span>搜索 Provider：未配置</span><span>搜索 0／8 · 抓取 0／6 · 读取 0／20</span></div>
             <div class="run-summary" id="run-summary"><div class="summary-item"><strong>4</strong><span>比较类型已检查</span></div><div class="summary-item"><strong>3</strong><span>候选通过门禁</span></div><div class="summary-item"><strong>1</strong><span>补证项，仅留观察</span></div><div class="summary-item"><strong>0</strong><span>自动创建 Case / Project</span></div></div>
             <details class="cleaning-steps" id="search-trace"><summary>搜索命中与放弃 URL（线索，不是证据）</summary><ol id="search-trace-list"><li>尚无搜索事件；配置搜索 Provider 或运行配额受限样例后显示。</li></ol></details>
@@ -300,6 +307,26 @@
               </ul>
               <div class="stop-reason" id="stop-reason">停止原因：四类基准已检查，预算内没有更多高价值补证路径。候选通过门禁；补证项仅留观察，未进入候选看板。</div>
             </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-trial">
+          <div class="board">
+            <div class="page-head">
+              <div class="page-head-main"><div class="eyebrow">试用台账 · 统计只陈述，不自动生效</div><h1>候选试用与校准</h1><p class="page-desc">汇总多轮运行的候选命中率、排除原因、成本与配置版本。任何阈值或来源调整都由你在数据目录批准后重启生效；本页没有修改入口。</p></div>
+              <div class="page-actions"><button class="btn primary" id="trial-report">生成本机试用报告</button></div>
+            </div>
+            <div class="run-summary" id="trial-summary"></div>
+            <div class="info-card" style="margin-bottom:18px"><h2>排除原因分布</h2><div class="reason-bar" id="trial-reasons"></div></div>
+            <div class="info-card" style="margin-bottom:18px">
+              <h2>运行历史</h2>
+              <div class="toolbar" style="margin-bottom:10px">
+                <select class="select" id="trial-dataset-filter" aria-label="按数据集筛选运行"><option value="all">全部数据集</option></select>
+                <span class="toolbar-note">成本取自 Pi 会话记录与 Host 事件，只读</span>
+              </div>
+              <div class="table-wrap"><table class="data-table" style="min-width:980px"><thead><tr><th>运行</th><th>数据集</th><th>模型</th><th>候选</th><th>搜索/抓取/读取</th><th>token</th><th>费用</th><th>状态</th></tr></thead><tbody id="trial-runs-body"></tbody></table></div>
+            </div>
+            <div class="info-card"><h2>阈值配置状态</h2><div id="trial-config"></div></div>
           </div>
         </section>
 
@@ -349,7 +376,7 @@
 <dialog class="candidate-dialog" id="candidate-dialog" aria-labelledby="dialog-title">
   <div class="dialog-shell">
     <div class="dialog-head"><div class="dialog-title"><span class="compare-type" id="dialog-type"></span><h2 id="dialog-title"></h2><p id="dialog-subtitle"></p></div><button class="icon-btn" id="dialog-close" aria-label="关闭候选详情">关闭</button></div>
-    <div class="dialog-actions"><button class="btn small primary" id="retain-candidate">保留候选</button><button class="btn small" id="exclude-candidate">排除候选</button><input class="review-note" id="review-note" placeholder="复核说明（可选）" aria-label="复核说明"><span class="muted" style="font-size:11px">不创建 Case</span></div>
+    <div class="dialog-actions"><button class="btn small primary" id="retain-candidate">保留候选</button><button class="btn small" id="exclude-candidate">排除候选</button><input class="review-note" id="review-note" placeholder="复核说明（可选）" aria-label="复核说明"><span class="chip-row" id="reason-chips" role="radiogroup" aria-label="排除原因，排除时必选"><span class="muted" style="font-size:11px">排除原因：</span><button type="button" class="chip" data-reason="口径不符">口径不符</button><button type="button" class="chip" data-reason="证据不足">证据不足</button><button type="button" class="chip" data-reason="重复">重复</button><button type="button" class="chip" data-reason="其他">其他</button></span><span class="muted" style="font-size:11px">不创建 Case</span></div>
     <div class="dialog-tabs" role="tablist"><button class="dialog-tab active" data-tab="overview">概览</button><button class="dialog-tab" data-tab="calculation">比较计算</button><button class="dialog-tab" data-tab="evidence">证据与血缘</button><button class="dialog-tab" data-tab="history">历史</button></div>
     <div class="dialog-content" id="dialog-content"></div>
   </div>

@@ -1,7 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { CaseCandidate, CandidateStatus, DatasetVersion, ExplorationRun, Observation, SearchEventRecord, SnapshotReadRecord, SourceAsset, WebSnapshotRecord } from './mvp-types.ts';
+import type { CaseCandidate, CandidateStatus, DatasetVersion, ExplorationRun, ExclusionReason, Observation, SearchEventRecord, SnapshotReadRecord, SourceAsset, WebSnapshotRecord } from './mvp-types.ts';
+import { EXCLUSION_REASONS } from './mvp-types.ts';
 import { canonicalJson } from './raw-evidence.ts';
 
 export class WorkspaceStore {
@@ -29,7 +30,10 @@ export class WorkspaceStore {
       CREATE INDEX IF NOT EXISTS idx_web_snapshots_run ON web_snapshots(run_id, created_at);
       CREATE TABLE IF NOT EXISTS snapshot_reads (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, snapshot_id TEXT NOT NULL, created_at TEXT NOT NULL, payload TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS idx_snapshot_reads_run ON snapshot_reads(run_id, created_at);
+      CREATE TABLE IF NOT EXISTS benchmark_versions (id TEXT NOT NULL, version INTEGER NOT NULL, threshold REAL NOT NULL, reason TEXT NOT NULL, approved_at TEXT NOT NULL, recorded_at TEXT NOT NULL, PRIMARY KEY (id, version));
     `);
+    const reviewColumns = this.db.prepare('PRAGMA table_info(reviews)').all() as Array<{ name: string }>;
+    if (!reviewColumns.some(column => column.name === 'reason')) this.db.exec('ALTER TABLE reviews ADD COLUMN reason TEXT NOT NULL DEFAULT \'\'');
   }
 
   insertAsset(asset: SourceAsset): void {
@@ -156,14 +160,16 @@ export class WorkspaceStore {
     return row ? JSON.parse(row.payload) as CaseCandidate : null;
   }
 
-  reviewCandidate(id: string, status: CandidateStatus, note: string, now: string): CaseCandidate {
+  reviewCandidate(id: string, status: CandidateStatus, note: string, now: string, reason = ''): CaseCandidate {
     const candidate = this.getCandidate(id);
     if (!candidate) throw new Error('candidate_not_found');
-    const review = { status, note, createdAt: now };
+    if (reason && !EXCLUSION_REASONS.includes(reason as ExclusionReason)) throw new Error('invalid_exclusion_reason');
+    if (status === 'excluded' && !reason) throw new Error('exclusion_reason_required');
+    const review = { status, note, createdAt: now, ...(reason ? { reason } : {}) };
     const updated = { ...candidate, status, updatedAt: now, reviews: [review, ...candidate.reviews] };
     this.db.exec('BEGIN');
     try {
-      this.db.prepare('INSERT INTO reviews (candidate_id, created_at, status, note) VALUES (?, ?, ?, ?)').run(id, now, status, note);
+      this.db.prepare('INSERT INTO reviews (candidate_id, created_at, status, note, reason) VALUES (?, ?, ?, ?, ?)').run(id, now, status, note, reason);
       this.db.prepare('UPDATE candidates SET status = ?, updated_at = ?, payload = ? WHERE id = ?').run(status, now, JSON.stringify(updated), id);
       this.db.exec('COMMIT');
       return updated;
@@ -171,6 +177,28 @@ export class WorkspaceStore {
       this.db.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  recordBenchmarkVersions(entries: Array<{ id: string; version: number; threshold: number; reason: string; approvedAt: string }>, recordedAt: string): void {
+    if (!entries.length) return;
+    for (const entry of entries) {
+      const existing = this.db.prepare('SELECT threshold FROM benchmark_versions WHERE id = ? AND version = ?').get(entry.id, entry.version) as { threshold: number } | undefined;
+      if (existing && existing.threshold !== entry.threshold) throw new Error(`benchmark_version_conflict:${entry.id}@v${entry.version} 已登记阈值 ${existing.threshold}，与本次 ${entry.threshold} 不一致；请递增 version`);
+    }
+    this.db.exec('BEGIN');
+    try {
+      for (const entry of entries) this.db.prepare('INSERT OR IGNORE INTO benchmark_versions (id, version, threshold, reason, approved_at, recorded_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(entry.id, entry.version, entry.threshold, entry.reason, entry.approvedAt, recordedAt);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  listBenchmarkVersions(): Array<{ id: string; version: number; threshold: number; reason: string; approvedAt: string; recordedAt: string }> {
+    return (this.db.prepare('SELECT id, version, threshold, reason, approved_at, recorded_at FROM benchmark_versions ORDER BY recorded_at, id, version').all() as Array<Record<string, unknown>>)
+      .map(row => ({ id: String(row.id), version: Number(row.version), threshold: Number(row.threshold), reason: String(row.reason ?? ''), approvedAt: String(row.approved_at ?? ''), recordedAt: String(row.recorded_at ?? '') }));
   }
 
   appendSearchEvent(event: SearchEventRecord): void {

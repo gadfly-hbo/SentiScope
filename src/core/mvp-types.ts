@@ -156,7 +156,11 @@ export type ReviewRecord = {
   status: CandidateStatus;
   note: string;
   createdAt: string;
+  reason?: string;
 };
+
+export const EXCLUSION_REASONS = ['口径不符', '证据不足', '重复', '其他'] as const;
+export type ExclusionReason = typeof EXCLUSION_REASONS[number];
 
 export type SourceTier = 'A' | 'B' | 'C';
 
@@ -226,6 +230,15 @@ export type RunEvent = {
   details?: Record<string, unknown>;
 };
 
+export type RunUsage = {
+  modelCalls: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  totalTokens: number;
+  costTotal: number | null;
+};
+
 export type ExplorationRun = {
   id: string;
   datasetId: string;
@@ -239,6 +252,7 @@ export type ExplorationRun = {
   candidateIds: string[];
   stopReason: string;
   events: RunEvent[];
+  usage?: RunUsage;
 };
 
 export type ImportResult = {

@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { join } from 'node:path';
+import { writeFileSync } from 'node:fs';
 import { startHost } from '../src/host/server.ts';
 import { createDemoResearch } from '../src/host/demo.ts';
+import { applyBenchmarkConfig } from '../src/core/benchmarks.ts';
 import { ControlledRuntime } from '../src/agent/exploration-service.ts';
 import { WorkspaceStore } from '../src/core/workspace-store.ts';
 import type { CaseCandidate, DatasetVersion, ExplorationRun, SourceAsset } from '../src/core/mvp-types.ts';
@@ -120,5 +122,59 @@ test('宿主重启：遗留 running 标记为 interrupted_by_restart', async () 
     assert.equal(detail.run.stopReason, 'interrupted_by_restart');
   } finally {
     await new Promise<void>(resolve => host.server.close(() => resolve()));
+  }
+});
+
+test('切片三宿主：阈值配置生效、排除原因、指定数据集运行、统计与试用报告', async () => {
+  const dataDir = makeDataDir();
+  writeFileSync(join(dataDir, 'benchmarks.json'), JSON.stringify({ definitions: [{ id: 'wait-target', threshold: 40, version: 2, reason: '试用期等待时长口径偏松', approvedAt: '2026-11-05' }] }));
+  const host = await startHost({
+    port: 0, dataDir, skillsDir: join(repoRoot, 'skills'), fixturesDir: join(repoRoot, 'fixtures', 'mvp'), seedDemo: true, maxToolCalls: 40,
+    researchFactory: ({ store, mode }) => mode === 'zero' ? undefined : createDemoResearch(store, join(repoRoot, 'fixtures', 'mvp')),
+  });
+  const headers = { 'x-sentiscope-client': '1' };
+  type Stats = { candidates: { total: number; review: number; retained: number; excluded: number }; hitRate: number | null; exclusionReasons: Record<string, number>; byType: Record<string, { review: number; retained: number; excluded: number }>; byDataset: Record<string, { review: number; retained: number; excluded: number }>; runs: Array<{ id: string; datasetId: string; datasetName: string | null; candidates: number; usage: unknown }>; config: { loaded: boolean; current: Array<{ id: string; thresholdVersion: string; threshold: number }>; overrides: Array<{ id: string }> }; configHistory: Array<{ id: string; version: number; threshold: number; reason: string }> };
+  try {
+    const first = await (await fetch(`${host.url}/api/trial-stats`)).json() as Stats;
+    assert.equal(first.candidates.total, 4);
+    assert.equal(first.config.loaded, true);
+    assert.equal(first.config.current.find(def => def.id === 'wait-target')!.threshold, 40);
+    assert.equal(first.config.current.find(def => def.id === 'wait-target')!.thresholdVersion, 'wait-target@v2');
+    assert.equal(first.config.current.find(def => def.id === 'revenue-target')!.thresholdVersion, 'revenue-target@v1');
+    assert.deepEqual(first.configHistory.map(entry => `${entry.id}@v${entry.version}:${entry.threshold}:${entry.reason}`), ['wait-target@v2:40:试用期等待时长口径偏松']);
+    assert.equal(first.runs.length, 1);
+    assert.ok(first.runs[0]!.datasetName?.startsWith('合成经营数据集'), `unexpected ${first.runs[0]!.datasetName}`);
+    const candidates = await (await fetch(`${host.url}/api/candidates`)).json() as { candidates: Array<{ id: string }> };
+    assert.equal((await fetch(`${host.url}/api/candidates/${candidates.candidates[0]!.id}/review`, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ status: 'excluded', note: '' }) })).status, 400);
+    const rejected = await (await fetch(`${host.url}/api/candidates/${candidates.candidates[0]!.id}/review`, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ status: 'excluded', note: '缺原因' }) })).json() as { error: string };
+    assert.equal(rejected.error, 'exclusion_reason_required');
+    const reviewed = await (await fetch(`${host.url}/api/candidates/${candidates.candidates[0]!.id}/review`, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ status: 'excluded', note: '口径不符', reason: '口径不符' }) })).json() as { candidate: { reviews: Array<{ reason?: string }> } };
+    assert.equal(reviewed.candidate.reviews[0]!.reason, '口径不符');
+    assert.equal((await fetch(`${host.url}/api/runs`, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ datasetId: 'nope' }) })).status, 404);
+    const datasets = await (await fetch(`${host.url}/api/datasets`)).json() as { datasets: Array<{ id: string; name: string }> };
+    const base = datasets.datasets.find(item => item.name === '合成经营数据集')!;
+    const accepted = await (await fetch(`${host.url}/api/runs`, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ mode: 'zero', datasetId: base.id }) })).json() as { runId: string };
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const detail = await (await fetch(`${host.url}/api/runs/${accepted.runId}`)).json() as { run: ExplorationRun };
+      if (detail.run.status !== 'running') break;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    const second = await (await fetch(`${host.url}/api/trial-stats`)).json() as Stats;
+    assert.equal(second.runs.length, 2);
+    assert.equal(second.runs[0]!.datasetId, base.id);
+    assert.equal(second.runs[0]!.candidates, 0);
+    assert.equal(second.exclusionReasons['口径不符'], 1);
+    assert.equal(second.hitRate, 0);
+    assert.ok((second.byType.target?.review ?? 0) + (second.byType.target?.excluded ?? 0) >= 1, 'byType 缺少状态拆分');
+    assert.ok(Object.keys(second.byDataset).length >= 1, 'byDataset 缺失');
+    const report = await (await fetch(`${host.url}/api/trial-report`)).json() as { report: string };
+    assert.match(report.report, /SentiScope 试用报告/);
+    assert.match(report.report, /wait-target@v2/);
+    assert.match(report.report, /口径不符 ×1/);
+    assert.match(report.report, /回链/);
+    assert.match(report.report, /只陈述统计与建议/);
+  } finally {
+    await new Promise<void>(resolve => host.server.close(() => resolve()));
+    applyBenchmarkConfig({ loaded: false, overrides: [] });
   }
 });
