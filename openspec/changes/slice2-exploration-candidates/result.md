@@ -94,9 +94,11 @@
 
 ## Git / CI
 
-- 2026-10-31 已提交 `5e9ac73`（`feat: implement descriptive exploration and case candidates`）并推送至 `origin/work/qoder/slice2-exploration-candidates`；未创建 PR，CI 未运行。
-- 分支包含大量新增与删除文件，待用户确认本结果记录和真实模型／公网授权范围后再决定是否收尾提交与 PR。
+- 2026-11-01 分支 `work/qoder/slice2-exploration-candidates` 共 5 个提交（`8e7edc2` 搜索模式实施、`b9302dc` 真实授权与验收、`3d0d0b4` UI 修复与 held-out 记录等）；分支 CI run `41282287082` success。
+- PR #2 squash 合并 main（提交 `7d9ad0c`），main CI run `41282536682` success（2026-11-01）。EVAL-2026-001 的失败历史与中止记录保留不动。
 
 ## 用户验收
 
-- 未开始。需要用户确认本机合成候选质量与 UI，并分别授权真实模型（模型、预算、可发送字段）与真实搜索 Provider（密钥环境、配额、偏好来源）后，才能执行切片二规格剩余验收。
+- 真实模型（`minimax-cn:MiniMax-M3.1-Flash`，与 OptraCall 一致）与真实搜索 Provider（MiniMax Coding Plan，共用凭据）已由用户授权并同步执行：端到端产出 3 个真实候选；held-out oracle 逐项一致；同配置 3 轮候选集合一致。
+- 用户裁定：真实导入数据不再单独测试，合成数据通过即视为真实通过。
+- 剩余：用户对本机候选看板的人工复核（保留／排除）与后续 OptraCall 投递契约（后置）。
