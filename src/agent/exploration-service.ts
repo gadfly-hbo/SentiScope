@@ -1,10 +1,11 @@
 import { compareDescriptive } from '../core/comparison.ts';
 import { createCandidate } from '../core/candidates.ts';
 import { standardizeDataset } from '../core/cleaning.ts';
-import type { PublicTableMapping } from '../source/public-web.ts';
 import { getBenchmarkDefinition, isPreviousYear } from '../core/benchmarks.ts';
-import type { CaseCandidate, ComparisonResult, DatasetVersion, EvidenceRef, ExplorationRun, Observation, QualityState, SourceAsset, StandardRow } from '../core/mvp-types.ts';
+import type { CaseCandidate, ComparisonResult, DatasetVersion, EvidenceRef, ExplorationRun, Observation, QualityState, StandardRow } from '../core/mvp-types.ts';
 import type { WorkspaceStore } from '../core/workspace-store.ts';
+import { WebResearchError, type WebFactInput, type WebResearchService } from '../source/web-research.ts';
+import { WebError } from '../source/public-web.ts';
 
 export type ComparisonRequest = {
   definitionId: string;
@@ -24,13 +25,14 @@ export type ProposalRequest = {
   refutationObservationId: string;
 };
 
-export type PublicFetchRequest = { url: string; mapping?: PublicTableMapping; mappingId?: string };
-
 export type ExplorationTools = {
   profile: () => Promise<{ rows: number; quality: DatasetVersion['quality']; fields: string[]; steps: number }>;
   query: (filter?: { metricId?: string; entity?: string; limit?: number }) => Promise<StandardRow[]>;
   clean: (input: { entityAliases?: Record<string, string> }) => Promise<DatasetVersion>;
-  fetchPublic: (request: PublicFetchRequest) => Promise<{ asset: SourceAsset; tables: string[][][]; dataset?: DatasetVersion }>;
+  webSearch: (input: { query: string }) => Promise<Record<string, unknown>>;
+  fetchPage: (input: { url: string }) => Promise<Record<string, unknown>>;
+  readSnapshot: (input: { snapshotId: string; offset?: number; length?: number }) => Promise<Record<string, unknown>>;
+  recordWebFact: (input: WebFactInput) => Promise<Record<string, unknown>>;
   compare: (request: ComparisonRequest) => Promise<ComparisonResult & { id: string }>;
   propose: (request: ProposalRequest) => Promise<CaseCandidate>;
   observe: (input: { summary: string; status?: 'observed' | 'needs_evidence' | 'rejected'; evidence?: EvidenceRef[]; quality?: QualityState; comparisonId?: string; role?: 'support' | 'refutation' | 'quality' }) => Promise<Observation>;
@@ -65,15 +67,16 @@ type RunOptions = {
   now: string;
   maxToolCalls?: number;
   signal?: AbortSignal;
-  publicFetcher?: (request: PublicFetchRequest) => Promise<{ asset: SourceAsset; tables: string[][][]; dataset?: DatasetVersion }>;
+  research?: WebResearchService;
 };
 
 export async function runExploration(options: RunOptions): Promise<ExplorationRun> {
   const { store, dataset, runtime, runId, now } = options;
   const maxToolCalls = options.maxToolCalls ?? 25;
+  const researchLimits = options.research?.limits() ?? { maxSearches: 0, maxFetches: 0, maxSnapshotReads: 0 };
   const run: ExplorationRun = {
     id: runId, datasetId: dataset.id, model: runtime.model, status: 'running', startedAt: now, finishedAt: null,
-    budget: { maxToolCalls, usedToolCalls: 0 }, coverage: [], candidateIds: [], stopReason: '', events: [],
+    budget: { maxToolCalls, usedToolCalls: 0, ...researchLimits, usedSearches: 0, usedFetches: 0, usedSnapshotReads: 0 }, coverage: [], candidateIds: [], stopReason: '', events: [],
   };
   store.createRun(run);
   const comparisons = new Map<string, ComparisonResult>();
@@ -93,6 +96,30 @@ export async function runExploration(options: RunOptions): Promise<ExplorationRu
     run.budget.usedToolCalls += 1;
     run.events.push({ type, at: now, summary, details: { toolCall: run.budget.usedToolCalls } });
     persist();
+  };
+  const syncResearchUsage = () => {
+    if (!options.research) return;
+    const usage = options.research.usage();
+    run.budget.usedSearches = usage.searches;
+    run.budget.usedFetches = usage.fetches;
+    run.budget.usedSnapshotReads = usage.reads;
+    persist();
+  };
+  const researchCall = async <T>(type: string, summary: string, call: (research: WebResearchService) => Promise<T>): Promise<T | { ok: false; error: string; note: string }> => {
+    charge(type, summary);
+    const research = options.research;
+    if (!research) return { ok: false, error: 'search_provider_unavailable', note: 'wrap up' };
+    try {
+      const outcome = await call(research);
+      syncResearchUsage();
+      return outcome;
+    } catch (error) {
+      syncResearchUsage();
+      const code = error instanceof WebError || error instanceof WebResearchError ? error.code : 'research_failed';
+      run.events.push({ type: 'research_error', at: now, summary: `${type} 被 Host 拒绝：${code}`, details: { tool: type, error: code } });
+      persist();
+      return { ok: false, error: code, note: 'Host 拒绝并留事件；可调整参数重试或收束，不得把失败当作证据' };
+    }
   };
   const appendObservation = (observation: Observation) => {
     store.appendObservations([observation]);
@@ -118,14 +145,22 @@ export async function runExploration(options: RunOptions): Promise<ExplorationRu
       store.insertDataset(next); workingDataset = next; run.datasetId = next.id; persist();
       return next;
     },
-    fetchPublic: async request => {
-      charge('public_fetch', '经 Host 白名单抓取公网补证');
-      if (!options.publicFetcher) throw new Error('public_web_disabled');
-      const result = await options.publicFetcher(request);
-      store.insertAsset(result.asset);
-      if (result.dataset) { workingDataset = result.dataset; run.datasetId = result.dataset.id; store.insertDataset(result.dataset); persist(); }
-      return result;
-    },
+    webSearch: async input => researchCall('web_search', `搜索外部基准：${input.query}`, research => research.search(runId, input.query)),
+    fetchPage: async input => researchCall('fetch_page', '选择性读取公开页面', research => research.fetchPage(runId, input.url, `${runId}:fetch_page:${run.budget.usedToolCalls}`)),
+    readSnapshot: async input => researchCall('read_snapshot', '分页核对快照原文', research => research.readSnapshot(runId, input.snapshotId, input.offset ?? 0, input.length ?? 6000, `${runId}:read_snapshot:${run.budget.usedToolCalls}`)),
+    recordWebFact: async input => researchCall('record_web_fact', `登记快照外部数字：${input.metricId} ${input.entity} ${input.period}`, async research => {
+      const fact = await research.recordWebFact(runId, input);
+      if (!fact.ok) return fact;
+      const next = standardizeDataset({
+        name: `${workingDataset.name} · 快照事实`, version: workingDataset.version + 1, now,
+        sourceAssetIds: [...new Set([...workingDataset.sourceAssetIds, fact.assetId])],
+        rawRows: [...workingDataset.rawRows, fact.rawRow],
+      });
+      const row = next.rows.find(item => item.source.assetSha256 === fact.assetSha256 && item.source.locator === fact.rawRow.source.locator);
+      if (!row) throw new Error('external_fact_row_not_found');
+      store.insertDataset(next); workingDataset = next; run.datasetId = next.id; persist();
+      return { ok: true as const, dataset: { id: next.id, version: next.version }, row: { rowId: row.rowId, metricId: row.metricId, entity: row.entity, period: row.period, value: row.value, unit: row.unit, quality: row.quality } };
+    }),
     compare: async request => {
       charge('comparison', `执行基准 ${request.definitionId} 描述性比较`);
       const definition = getBenchmarkDefinition(request.definitionId);
@@ -188,10 +223,12 @@ export async function runExploration(options: RunOptions): Promise<ExplorationRu
       if (!run.coverage.includes(comparison.selectionContext)) throw new Error('search_coverage_required');
       const refutation = store.listObservations(runId).find(item => item.id === request.refutationObservationId && item.role === 'refutation' && item.comparisonId === request.comparisonId && item.evidence.length > 0);
       if (!refutation) throw new Error('refutation_observation_required');
+      const webSources = new Set(comparison.evidence.filter(ref => ref.kind === 'web').map(ref => ref.assetSha256));
       const candidate = createCandidate({
         runId, datasetId: workingDataset.id, comparison, title: request.title, interpretation: request.interpretation, nextStep: request.nextStep,
         unknown: request.unknown, support: 'Host 已验证基准定义、数据行、计算与证据引用', refutation: refutation.summary,
         refutationObservationId: refutation.id, thresholdVersion: comparison.thresholdVersion, calculationLocator: `comparison:${request.comparisonId};revision:1`,
+        ...(webSources.size === 1 ? { singleSourceLimitation: '外部基准仅来自 1 个搜索快照，未做第二独立来源交叉验证；复核时应补充或替换来源' } : {}),
       }, now);
       const committed = store.commitCandidate(candidate, {
         id: `obs-${runId}-candidate-${++sequence}`, runId, kind: 'decision', status: 'candidate',

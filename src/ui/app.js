@@ -3,6 +3,7 @@ const TYPES = { target:'目标差距', history:'历史差距', competitor:'竞�
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g,char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 let candidates = [], datasets = [], sources = [], runs = [], currentDataset = null, currentRun = null;
+let searchEvents = [], snapshots = [], snapshotReads = [], webResearch = { enabled:false, providers:[], preferredDomains:[], budget:null };
 let boardView = 'cards', selectedId = null, activeTab = 'overview', lastFocused = null, toastTimer;
 const headers = { 'x-sentiscope-client': '1' };
 
@@ -25,6 +26,7 @@ function normalizeCandidate(raw) {
     entity: comparison.entity, period: comparison.period, actual: `${comparison.actual} ${comparison.unit}`,
     benchmark: `${comparison.benchmark} ${comparison.unit} · ${comparison.benchmarkLabel}`,
     formula: comparison.formula, unknown: raw.unknown, support: raw.support, counter: raw.refutation,
+    singleSource: raw.singleSourceLimitation ?? null,
     evidence: comparison.evidence,
     history: [...raw.reviews.map(review => [review.createdAt, `用户${STATUS[review.status].label}：${review.note || '未填写说明'}`]), [raw.createdAt,'候选门禁通过，进入待复核']],
   };
@@ -54,7 +56,7 @@ function renderBoard() {
   $('candidate-empty').hidden = visible.length > 0;
 }
 function overview(c) {
-  return `<div class="detail-grid"><section class="detail-section full"><h3>描述性结论</h3><div class="claim">${escapeHtml(c.title)}</div><p class="muted" style="margin-top:10px">只陈述与基准的差距，不推断根因、不预测、不自动创建 Case。</p></section><section class="detail-section"><h3>比较事实</h3><dl class="kv"><dt>指标</dt><dd>${escapeHtml(c.metric)}</dd><dt>实体</dt><dd>${escapeHtml(c.entity)}</dd><dt>周期</dt><dd>${escapeHtml(c.period)}</dd><dt>实际</dt><dd>${escapeHtml(c.actual)}</dd><dt>基准</dt><dd>${escapeHtml(c.benchmark)}</dd></dl></section><section class="detail-section"><h3>未知与限制</h3><p>${escapeHtml(c.unknown)}</p></section><section class="detail-section"><h3>支持证据</h3><p>${escapeHtml(c.support)}</p></section><section class="detail-section"><h3>已检查的反证</h3><p>${escapeHtml(c.counter)}</p></section></div>`;
+  return `<div class="detail-grid"><section class="detail-section full"><h3>描述性结论</h3><div class="claim">${escapeHtml(c.title)}</div><p class="muted" style="margin-top:10px">只陈述与基准的差距，不推断根因、不预测、不自动创建 Case。</p></section><section class="detail-section"><h3>比较事实</h3><dl class="kv"><dt>指标</dt><dd>${escapeHtml(c.metric)}</dd><dt>实体</dt><dd>${escapeHtml(c.entity)}</dd><dt>周期</dt><dd>${escapeHtml(c.period)}</dd><dt>实际</dt><dd>${escapeHtml(c.actual)}</dd><dt>基准</dt><dd>${escapeHtml(c.benchmark)}</dd></dl></section><section class="detail-section"><h3>未知与限制</h3><p>${escapeHtml(c.unknown)}</p></section>${c.singleSource ? `<section class="detail-section full"><h3>单源限制（Host 标注）</h3><p>${escapeHtml(c.singleSource)}</p></section>` : ''}<section class="detail-section"><h3>支持证据</h3><p>${escapeHtml(c.support)}</p></section><section class="detail-section"><h3>已检查的反证</h3><p>${escapeHtml(c.counter)}</p></section></div>`;
 }
 function calculation(c) {
   return `<div class="detail-grid"><section class="detail-section full"><h3>确定性计算</h3><div class="formula">${escapeHtml(c.formula).replaceAll('\n','<br>')}</div><p class="muted" style="margin-top:10px">由比较工具计算并保存输入、公式、输出与工具版本；不是模型心算。</p></section><section class="detail-section"><h3>当前解释</h3><p>${escapeHtml(c.interpretation)}</p></section><section class="detail-section"><h3>下一步</h3><p>${escapeHtml(c.next)}</p></section></div>`;
@@ -96,7 +98,7 @@ async function openEvidence(index) {
       const detail = await api(`/api/runs/${c.raw.runId}`);
       const observation = detail.observations.find(item => item.comparisonId === comparisonId && item.comparison);
       if (!observation) { toast(`未找到比较事件 ${comparisonId}，未执行跳转。`); return; }
-      setView('exploration'); renderRun(detail.run,detail.observations);
+      setView('exploration'); renderRun(detail);
       const eventIndex = detail.run.events.findIndex(event => event.details?.observationId === observation.id);
       const target = eventIndex >= 0 ? $('activity-list').children[eventIndex] : null;
       if (target) { target.classList.add('highlight-target'); target.scrollIntoView({block:'center'}); }
@@ -108,14 +110,25 @@ async function openEvidence(index) {
     currentDataset = evidenceDataset;
     if (ref.kind === 'web') {
       setView('sources');
-      const card = document.querySelector(`[data-source-sha="${ref.assetSha256}"]`);
-      if (!card) { toast('未找到公网快照，证据下钻已停止。'); return; }
-      const detail = card.querySelector('details'); if (detail) detail.open = true;
-      const locator = document.createElement('p'); locator.className = 'source-meta'; locator.textContent = `候选引用位置：${ref.locator}`; detail?.append(locator);
-      const raw = await api(`/api/evidence-text/${ref.assetSha256}`);
-      const pre = document.createElement('pre'); pre.className = 'source-meta'; pre.textContent = extractEvidenceSnippet(raw.text,ref.locator); detail?.append(pre);
+      const quote = /^snapshot:([\w-]+):quote:(\d+)-(\d+)$/.exec(ref.locator);
+      const card = quote ? document.querySelector(`[data-snapshot-id="${quote[1]}"]`) : document.querySelector(`[data-source-sha="${ref.assetSha256}"]`);
+      if (!card) { toast('未找到对应搜索快照，证据下钻已停止。'); return; }
+      const detail = card.querySelector('details');
+      if (detail) {
+        detail.open = true;
+        detail.querySelectorAll('.evidence-drill').forEach(node => node.remove());
+        const locator = document.createElement('p'); locator.className = 'source-meta evidence-drill';
+        locator.textContent = quote ? `候选引用位置：${ref.locator}（快照原文 ${quote[2]}–${quote[3]}）` : `候选引用位置：${ref.locator}`;
+        detail.append(locator);
+        if (quote) {
+          const payload = await api(`/api/snapshots/${quote[1]}/text?offset=${quote[2]}&length=${Math.max(1, Number(quote[3]) - Number(quote[2]))}`);
+          const text = document.createElement('p'); text.className = 'source-meta evidence-drill';
+          text.innerHTML = `快照原文窗口（${payload.text.length} 字）：<mark>${escapeHtml(payload.text)}</mark>`;
+          detail.append(text);
+        }
+      }
       card.classList.add('highlight-target'); card.scrollIntoView({block:'center'}); setTimeout(() => card.classList.remove('highlight-target'),2200);
-      toast(`已定位公网证据：${ref.locator}`);
+      toast(`已定位快照引用：${ref.note || ref.locator}`);
       return;
     }
     setView('datasets'); renderDataset();
@@ -128,22 +141,6 @@ async function openEvidence(index) {
     if (!raw) $('cleaning-lineage').open = true;
     toast(`已定位证据：${ref.locator}`);
   } catch (error) { toast(`证据下钻失败：${error.message}`); }
-}
-function extractEvidenceSnippet(text, locator) {
-  const documentNode = new DOMParser().parseFromString(text,'text/html');
-  const css = /^table#([\w-]+) tr:nth-child\((\d+)\)$/.exec(locator);
-  if (css) {
-    const row = documentNode.getElementById(css[1])?.querySelectorAll('tr')[Number(css[2]) - 1];
-    if (row) return row.textContent.trim();
-  }
-  const table = /^table:(\d+):row:(\d+)$/.exec(locator);
-  if (table) {
-    const row = documentNode.querySelectorAll('table')[Number(table[1]) - 1]?.querySelectorAll('tr')[Number(table[2]) - 1];
-    if (row) return row.textContent.trim();
-  }
-  const line = /^row:(\d+)$/.exec(locator);
-  if (line) return text.split(/\r?\n/)[Number(line[1]) - 1] ?? '未找到引用行';
-  return text.slice(0,500);
 }
 
 function setView(name) {
@@ -176,10 +173,25 @@ function renderDataset() {
   renderPreview('clean');
 }
 function renderSources() {
-  document.querySelector('.source-list').innerHTML = sources.map(asset => `<article class="source-card" data-source-sha="${asset.sha256}"><div><div class="source-kind">${asset.kind === 'web' ? '公网快照' : '用户文件'}</div><h2>${escapeHtml(asset.name)}</h2><div class="source-meta">${asset.kind === 'web' ? `发布 ${escapeHtml(asset.publishedAt || '未知')} · 抓取 ${escapeHtml(asset.capturedAt || asset.importedAt)}` : `导入 ${escapeHtml(asset.importedAt)}`} · sha256:${escapeHtml(asset.sha256.slice(0,16))}…</div><details><summary>查看来源定位与原始证据</summary><p class="source-meta">${escapeHtml(asset.locator)}</p><a class="btn small" href="/api/evidence/${asset.sha256}" download>下载原始证据</a></details></div><div class="source-status">原始字节已保存<br>${escapeHtml(asset.mediaType)}</div></article>`).join('');
-  $('file-list').innerHTML = sources.map(asset => `<li><div class="file-name">${escapeHtml(asset.name)}</div><div class="file-meta">${asset.kind === 'web' ? '公网快照' : '用户文件'} · ${escapeHtml(asset.sha256.slice(0,12))}…</div></li>`).join('');
+  const fetched = new Set(snapshots.flatMap(snapshot => [snapshot.url, snapshot.finalUrl]));
+  const quota = webResearch.budget ?? { maxSearches:8, maxFetches:6, maxSnapshotReads:20 };
+  $('research-banner').innerHTML = `<b>公网检索</b><span>Provider：${webResearch.enabled ? escapeHtml(webResearch.providers.join('、')) : '未配置（数据目录 search.json）'}</span><span>优先域：${webResearch.preferredDomains?.length ? escapeHtml(webResearch.preferredDomains.join('、')) : '未设置'}</span><span>配额上限：搜索 ${quota.maxSearches} · 抓取 ${quota.maxFetches} · 读取 ${quota.maxSnapshotReads}</span><span>搜索事件 ${searchEvents.length} · 快照 ${snapshots.length} · 读取 ${snapshotReads.length}</span>`;
+  $('search-event-list').innerHTML = searchEvents.length ? searchEvents.map(event => event.kind === 'selection'
+    ? `<article class="source-card"><div><div class="source-kind">选择读取 · 等级 ${escapeHtml(event.hits[0]?.tier ?? 'C')}</div><h2>${escapeHtml(event.hits[0]?.title || event.hits[0]?.url || '快照')}</h2><div class="source-meta">${escapeHtml(event.hits[0]?.url ?? '')}<br>callKey=${escapeHtml(event.callKey)} · ${escapeHtml(event.createdAt)}</div></div><div class="source-status">已保存不可变快照<br>原文可下钻</div></article>`
+    : `<article class="source-card"><div><div class="source-kind">搜索事件${event.error ? ' · 失败' : ''}</div><h2>${escapeHtml(event.query || '（无 query）')}</h2><div class="source-meta">Provider ${escapeHtml(event.provider)} · callKey=${escapeHtml(event.callKey)} · ${escapeHtml(event.createdAt)}${event.error ? ` · 错误 ${escapeHtml(event.error)}（以错误值返回，不伪造无结果）` : ''}</div><ul class="hit-list">${event.hits.length ? event.hits.map((hit,index) => `<li><b>命中 ${index + 1}</b> · ${escapeHtml(hit.title)} · 等级 ${escapeHtml(hit.tier ?? 'C')} · ${fetched.has(hit.url) ? 'Agent 选择 fetch_page → 快照' : '未读取（Agent 未选择或放弃）'}<br><span class="muted">${escapeHtml(hit.url)}</span><br><span class="muted">摘要只是线索：${escapeHtml(hit.snippet)}</span></li>`).join('') : '<li>无命中</li>'}</ul></div><div class="source-status">${event.hits.length} 条命中<br>线索，不是证据</div></article>`).join('')
+    : '<div class="empty-state">尚无搜索事件。配置搜索 Provider 后由 Agent 自主发起。</div>';
+  const files = sources.filter(asset => asset.kind !== 'web');
+  $('asset-list').innerHTML = [
+    files.map(asset => `<article class="source-card" data-source-sha="${asset.sha256}"><div><div class="source-kind">用户文件</div><h2>${escapeHtml(asset.name)}</h2><div class="source-meta">导入 ${escapeHtml(asset.importedAt)} · ${asset.bytes} 字节 · sha256:${escapeHtml(asset.sha256.slice(0,16))}…</div><details class="snapshot-detail"><summary>查看来源定位与原始证据</summary><p>${escapeHtml(asset.locator)}</p><p><a class="btn small" href="/api/evidence/${asset.sha256}" download>下载原始证据</a></p></details></div><div class="source-status">原始字节已保存<br>${escapeHtml(asset.mediaType)}</div></article>`).join(''),
+    snapshots.map(snapshot => `<article class="source-card" data-snapshot-id="${snapshot.id}" data-source-sha="${snapshot.assetSha256}"><div><div class="source-kind">搜索快照 · 等级 ${escapeHtml(snapshot.sourceTier)}</div><h2>${escapeHtml(snapshot.title)}</h2><div class="source-meta">${escapeHtml(snapshot.finalUrl || snapshot.url)}<br>发布 ${escapeHtml(snapshot.publishedAt || '未知')} · 抓取 ${escapeHtml(snapshot.capturedAt)} · callKey=${escapeHtml(snapshot.callKey)} · 解析 ${escapeHtml(snapshot.parseStatus)} · 运行 ${escapeHtml(snapshot.runId)}</div><details class="snapshot-detail"><summary>查看快照摘要与原文</summary><p>${escapeHtml(snapshot.excerpt)}</p><p>读取 ${snapshotReads.filter(read => read.snapshotId === snapshot.id).length} 次 · 全文 ${escapeHtml(String(snapshot.excerpt.length))}+ 字 · <a class="btn small" href="/api/evidence/${snapshot.assetSha256}" download>下载原始字节</a></p></details></div><div class="source-status">原始字节已保存<br>${escapeHtml(snapshot.contentType)}</div></article>`).join(''),
+  ].join('') || '<div class="empty-state">尚无来源资产。</div>';
+  $('file-list').innerHTML = [
+    ...files.map(asset => `<li><div class="file-name">${escapeHtml(asset.name)}</div><div class="file-meta">用户文件 · ${escapeHtml(asset.sha256.slice(0,12))}…</div></li>`),
+    `<li><div class="file-name">搜索链</div><div class="file-meta">web_search ${searchEvents.filter(event => event.kind === 'search').length} · fetch_page ${snapshots.length} · read_snapshot ${snapshotReads.length}</div></li>`,
+  ].join('');
 }
-function renderRun(run, observations = []) {
+function renderRun(detail) {
+  const run = detail.run, observations = detail.observations ?? [];
   currentRun = run;
   $('cancel-run').hidden = run.status !== 'running';
   const needs = observations.filter(observation => observation.status === 'needs_evidence').length;
@@ -188,8 +200,21 @@ function renderRun(run, observations = []) {
   $('activity-list').innerHTML = run.events.map(event => `<li><time class="activity-time">${escapeHtml(event.at.slice(11,19))}</time><div><div class="activity-title"><span class="tool-pill">${escapeHtml(event.type)}</span>${escapeHtml(event.summary)}</div><div class="activity-detail">${escapeHtml(JSON.stringify(event.details || {}))}</div></div></li>`).join('');
   $('stop-reason').textContent = `${run.status} · ${run.stopReason}`;
   const banner = document.querySelector('#view-exploration .context-banner');
-  banner.innerHTML = `<b>${escapeHtml(run.datasetId)}</b><span>模型：${escapeHtml(run.model)}</span><span>工具预算：${run.budget.usedToolCalls} / ${run.budget.maxToolCalls}</span><span>状态：${escapeHtml(run.status)}</span>`;
+  banner.innerHTML = `<b>${escapeHtml(run.datasetId)}</b><span>模型：${escapeHtml(run.model)}</span><span>工具预算：${run.budget.usedToolCalls} / ${run.budget.maxToolCalls}</span><span>搜索 ${run.budget.usedSearches}／${run.budget.maxSearches} · 抓取 ${run.budget.usedFetches}／${run.budget.maxFetches} · 读取 ${run.budget.usedSnapshotReads}／${run.budget.maxSnapshotReads}</span><span>状态：${escapeHtml(run.status)}</span>`;
   document.querySelector('.activity-head span').textContent = `运行 ${run.id} · ${run.status}`;
+  renderSearchTrace(detail.searchEvents ?? [], detail.snapshots ?? []);
+}
+function renderSearchTrace(events, eventSnapshots) {
+  const fetched = new Set(eventSnapshots.flatMap(snapshot => [snapshot.url, snapshot.finalUrl]));
+  const items = events.flatMap(event => {
+    if (event.kind === 'selection') return [`<li><b>选择读取</b> · ${escapeHtml(event.hits[0]?.url ?? '')} · callKey=${escapeHtml(event.callKey)} → 快照</li>`];
+    if (event.error) return [`<li><b>搜索未成功</b> · query=${escapeHtml(event.query)} · ${escapeHtml(event.error)}（Host 以错误值返回，不伪造无结果）</li>`];
+    return event.hits.length
+      ? [`<li><b>搜索</b> · query=${escapeHtml(event.query)} · Provider ${escapeHtml(event.provider)} · callKey=${escapeHtml(event.callKey)}</li>`, ...event.hits.map((hit,index) => `<li><b>命中 ${index + 1}</b> · ${escapeHtml(hit.title)} · 等级 ${escapeHtml(hit.tier ?? 'C')} · ${fetched.has(hit.url) ? 'Agent 选择 fetch_page → 快照' : '未读取（Agent 未选择或放弃）'}<br><span class="muted">${escapeHtml(hit.url)} · 摘要只是线索：${escapeHtml(hit.snippet)}</span></li>`)]
+      : [`<li><b>搜索</b> · query=${escapeHtml(event.query)} · 无命中</li>`];
+  });
+  $('search-trace-list').innerHTML = items.length ? items.join('') : '<li>本次运行没有搜索事件；外部基准不可用时 Agent 只使用导入数据。</li>';
+  $('search-trace').open = items.length > 0;
 }
 async function loadCandidates() { candidates = (await api('/api/candidates')).candidates; renderBoard(); }
 async function loadDatasets() {
@@ -198,17 +223,18 @@ async function loadDatasets() {
   renderDataset();
 }
 async function loadSources() {
-  sources = (await api('/api/sources')).sources;
+  const payload = await api('/api/sources');
+  sources = payload.sources ?? []; searchEvents = payload.searchEvents ?? []; snapshots = payload.snapshots ?? []; snapshotReads = payload.snapshotReads ?? [];
+  webResearch = payload.webResearch ?? { enabled:false, providers:[], preferredDomains:[], budget:null };
   document.querySelectorAll('[data-nav="sources"]').forEach(button => {
-    const kind = button.textContent.includes('公网') ? 'web' : 'file';
-    button.querySelector('.nav-count').textContent = sources.filter(source => source.kind === kind).length;
+    button.querySelector('.nav-count').textContent = button.textContent.includes('搜索快照') ? snapshots.length : sources.filter(source => source.kind !== 'web').length;
   });
   renderSources();
 }
 async function loadRuns() {
   runs = (await api('/api/runs')).runs;
   document.querySelector('.nav-button[data-nav="exploration"] .nav-count').textContent = runs.length;
-  if (runs[0]) { const detail = await api(`/api/runs/${runs[0].id}`); renderRun(detail.run,detail.observations); }
+  if (runs[0]) renderRun(await api(`/api/runs/${runs[0].id}`));
 }
 async function startRun(mode) {
   try {
@@ -216,11 +242,11 @@ async function startRun(mode) {
     setView('exploration'); toast('探索已启动，正在读取真实运行状态…');
     let finished = false;
     for (let attempt = 0; attempt < 100; attempt += 1) {
-      const detail = await api(`/api/runs/${runId}`); renderRun(detail.run,detail.observations);
+      const detail = await api(`/api/runs/${runId}`); renderRun(detail);
       if (detail.run.status !== 'running') { finished = true; break; }
       await new Promise(resolve => setTimeout(resolve,200));
     }
-    if (finished) { await Promise.all([loadCandidates(),loadRuns()]); toast('探索运行已结束，候选与观察已更新。'); }
+    if (finished) { await Promise.all([loadCandidates(),loadRuns(),loadDatasets(),loadSources()]); toast('探索运行已结束，候选、观察、数据版本与搜索快照已更新。'); }
     else toast('探索仍在运行；可稍后刷新，不会将超时当作完成。');
   } catch (error) { toast(`探索失败：${error.message}`); }
 }
@@ -253,33 +279,23 @@ $('demo-import').addEventListener('click',() => {
   });
   input.click();
 });
-$('demo-web').textContent = '添加授权公网来源';
-$('demo-web').addEventListener('click',async () => {
-  const url = window.prompt('输入已获授权的公开 URL（Host 将按白名单与安全策略校验）'); if (!url) return;
-  if (!window.confirm('确认该来源允许自动读取，且请求不包含任何内部数据？')) return;
-  const metricId = window.prompt('对比指标 ID','revenue.growth'); if (!metricId) return;
-  const entity = window.prompt('基准实体（例如：竞对A 或 行业）','竞对A'); if (!entity) return;
-  const period = window.prompt('比较期间（例如：2026Q3）','2026Q3'); if (!period) return;
-  const unit = window.prompt('数值单位','%'); if (!unit) return;
-  const valueHeader = window.prompt('表格中的数值列标题','增速'); if (!valueHeader) return;
-  const scope = window.prompt('公开数据的披露范围','同一细分市场与季度'); if (!scope) return;
-  const currency = window.prompt('币种','CNY'); if (!currency) return;
-  const region = window.prompt('地域范围','同一地域'); if (!region) return;
-  const sourceType = window.prompt('来源等级：primary（一手）或 secondary（二手）','primary'); if (!['primary','secondary'].includes(sourceType)) return;
-  const periodClosed = window.confirm('该公开数据的比较期间是否已完整结束？仅确认后可用于已结期比较。');
-  try {
-    await api('/api/public-sources',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url,termsConfirmed:true,mapping:{metricId,entity,period,unit,valueHeader,periodClosed,scope,currency,region,sourceType}})});
-    await Promise.all([loadSources(),loadDatasets()]); toast('公网快照与标准对比数据已保存。');
-  } catch (error) { toast(`公网采集未执行：${error.message}`); }
+$('demo-web').textContent = '查看搜索 Provider 状态';
+$('demo-web').addEventListener('click',() => {
+  setView('sources');
+  const quota = webResearch.budget ?? { maxSearches:8, maxFetches:6, maxSnapshotReads:20 };
+  toast(webResearch.enabled
+    ? `搜索 Provider：${webResearch.providers.join('、')}；配额 搜索 ${quota.maxSearches}／抓取 ${quota.maxFetches}／读取 ${quota.maxSnapshotReads}；已有 ${searchEvents.length} 个搜索事件、${snapshots.length} 个快照。`
+    : '未配置搜索 Provider：在数据目录写入 search.json（Provider、密钥环境变量、优先域、配额）并重启 Host；本轮探索只使用导入数据。');
 });
 $('cancel-run').addEventListener('click',async () => { if (!currentRun) return; try { await api(`/api/runs/${currentRun.id}/cancel`,{method:'POST'}); toast('已请求取消，等待运行状态落库。'); } catch (error) { toast(`取消失败：${error.message}`); } });
 $('replay-run').textContent = '运行合成探索'; $('replay-run').addEventListener('click',() => startRun('qualified'));
 $('zero-run-toggle').textContent = '运行零候选样例'; $('zero-run-toggle').addEventListener('click',() => startRun('zero'));
-$('help-button').addEventListener('click',() => toast('导入与公网数据 → 可重放清洗 → 描述性探索 → Case 候选。'));
+$('limited-run-toggle').textContent = '运行配额受限样例'; $('limited-run-toggle').addEventListener('click',() => startRun('limited'));
+$('help-button').addEventListener('click',() => toast('MVP：导入数据 → 可重放清洗 → 描述性探索 → deepresearch 公网检索补证 → Case 候选。'));
 function syncSidebarState() { $('sidebar-toggle').setAttribute('aria-expanded',String(window.innerWidth > 760 ? !$('app').classList.contains('sidebar-collapsed') : $('app').classList.contains('sidebar-open'))); }
 window.addEventListener('resize',syncSidebarState); syncSidebarState();
 $('candidate-board').innerHTML = '<div class="empty-state">正在加载本机工作区…</div>';
-document.querySelector('.source-list').innerHTML = '';
+$('asset-list').innerHTML = ''; $('search-event-list').innerHTML = '';
 document.querySelector('#view-datasets .dataset-grid').innerHTML = '';
 $('activity-list').innerHTML = ''; $('run-summary').innerHTML = '';
 Promise.all([loadCandidates(),loadDatasets(),loadSources(),loadRuns()]).catch(error => toast(`工作区加载失败：${error.message}`));

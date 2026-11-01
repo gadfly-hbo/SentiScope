@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { WorkspaceStore } from '../src/core/workspace-store.ts';
 import { ControlledRuntime, runExploration } from '../src/agent/exploration-service.ts';
+import { createStaticSearchProvider, WebResearchService } from '../src/source/web-research.ts';
 import type { RawRow, SourceAsset, StandardRow } from '../src/core/mvp-types.ts';
 import { makeDataDir } from './helpers.ts';
 
@@ -160,5 +161,108 @@ test('AGT-04：预取消不得执行为 completed', async () => {
   assert.equal(run.status, 'cancelled');
   assert.equal(called, false);
   assert.equal(store.getRun(run.id)!.status, 'cancelled');
+  store.close();
+});
+
+const PUBLIC_IP = '93.184.216.34';
+function researchService(store: WorkspaceStore) {
+  return new WebResearchService({
+    store, rootDir: store.rootDir, now: NOW,
+    providers: [createStaticSearchProvider('synthetic', [{ url: 'https://example.com/industry?period=2026Q3', title: '行业披露', snippet: '行业增速 3.0%' }])],
+    lookup: async () => [{ address: PUBLIC_IP, family: 4 }],
+    transport: async (url: URL) => url.pathname === '/robots.txt'
+      ? { status: 200, headers: {}, body: Buffer.from('User-agent: *\nAllow: /'), remoteAddress: PUBLIC_IP }
+      : { status: 200, headers: { 'content-type': 'text/html' }, body: Buffer.from('<html><head><title>行业披露</title></head><body><time datetime="2026-10-05">2026-10-05</time><p>Industry revenue grew 3.0% in 2026Q3.</p></body></html>'), remoteAddress: PUBLIC_IP },
+    budget: { maxSearches: 2, maxFetches: 2, maxSnapshotReads: 3 },
+    preferredDomains: ['example.com'],
+  });
+}
+
+test('WEB-01/06：搜索配额、快照与外部数字同步进运行状态与新数据版本', async () => {
+  const store = new WorkspaceStore(makeDataDir());
+  const data = fourGapDataset(); store.insertDataset(data); seedAssets(store, data);
+  let factRowId = '';
+  const runtime = new ControlledRuntime(async tools => {
+    const search = await tools.webSearch({ query: '行业增速 2026Q3' }) as { ok: boolean; hits: Array<{ url: string; tier: string }> };
+    assert.equal(search.hits[0]!.tier, 'A');
+    const fetched = await tools.fetchPage({ url: search.hits[0]!.url }) as { ok: boolean; snapshotId: string };
+    await tools.readSnapshot({ snapshotId: fetched.snapshotId, offset: 0, length: 200 });
+    const fact = await tools.recordWebFact({
+      snapshotId: fetched.snapshotId, quote: 'Industry revenue grew 3.0% in 2026Q3.', valueText: '3.0%', metricId: 'growth', entity: '行业披露', period: '2026Q3', unit: '%',
+      dimensions: { scope: 'same', currency: 'CNY', region: 'same', sourceType: 'primary', publishedAt: '2026-10-05', closed: 'true', comparable: 'true' },
+    }) as { ok: boolean; row: { rowId: string } };
+    factRowId = fact.row.rowId;
+    return { stopReason: '外部数字已登记' };
+  });
+  const run = await runExploration({ store, dataset: data, runtime, runId: 'run-web', now: NOW, research: researchService(store) });
+  assert.equal(run.status, 'completed', run.stopReason);
+  assert.deepEqual([run.budget.usedSearches, run.budget.usedFetches, run.budget.usedSnapshotReads], [1, 1, 1]);
+  assert.deepEqual([run.budget.maxSearches, run.budget.maxFetches, run.budget.maxSnapshotReads], [2, 2, 3]);
+  assert.deepEqual(run.events.map(event => event.type).filter(type => ['web_search', 'fetch_page', 'read_snapshot', 'record_web_fact'].includes(type)), ['web_search', 'fetch_page', 'read_snapshot', 'record_web_fact']);
+  assert.notEqual(run.datasetId, data.id);
+  const webRow = store.getDataset(run.datasetId)!.rows.find(row => row.rowId === factRowId)!;
+  assert.equal(webRow.value, 3);
+  assert.equal(webRow.unit, '%');
+  assert.equal(webRow.quality, 'usable');
+  assert.equal(webRow.source.kind, 'web');
+  assert.match(webRow.source.locator, /^snapshot:/);
+  assert.equal(store.getDataset(data.id)!.rows.some(row => row.rowId === factRowId), false);
+  const events = store.listSearchEvents(run.id);
+  assert.equal(events[0]!.kind, 'search');
+  assert.equal(events[0]!.callKey, 'run-web:web_search:1');
+  assert.ok(events.some(event => event.kind === 'selection' && event.hits[0]!.status === 'fetched'));
+  assert.equal(store.listSnapshots(run.id).length, 1);
+  assert.equal(store.listSnapshotReads(run.id).length, 1);
+  store.close();
+});
+
+test('WEB-02：未配置搜索 Provider 时工具返回错误值并提示收束，运行不失败', async () => {
+  const store = new WorkspaceStore(makeDataDir());
+  const data = fourGapDataset(); store.insertDataset(data); seedAssets(store, data);
+  const runtime = new ControlledRuntime(async tools => {
+    const outcomes = [
+      await tools.webSearch({ query: '行业增速' }),
+      await tools.fetchPage({ url: 'https://example.com/industry' }),
+      await tools.readSnapshot({ snapshotId: 'snap-missing' }),
+      await tools.recordWebFact({ snapshotId: 'snap-missing', quote: 'x', valueText: '3.0%', metricId: 'growth', entity: '行业', period: '2026Q3', unit: '%', dimensions: {} }),
+    ];
+    for (const outcome of outcomes) assert.equal(outcome.error, 'search_provider_unavailable');
+    assert.equal(outcomes[0]!.note, 'wrap up');
+    await tools.setCoverage(['外部基准不可用，本轮只使用导入数据']);
+    return { stopReason: '无外部基准，零候选收束' };
+  });
+  const run = await runExploration({ store, dataset: data, runtime, runId: 'run-no-web', now: NOW });
+  assert.equal(run.status, 'completed', run.stopReason);
+  assert.deepEqual([run.budget.maxSearches, run.budget.maxFetches, run.budget.maxSnapshotReads], [0, 0, 0]);
+  assert.deepEqual([run.budget.usedSearches, run.budget.usedFetches, run.budget.usedSnapshotReads], [0, 0, 0]);
+  assert.equal(run.candidateIds.length, 0);
+  assert.equal(store.listSnapshots(run.id).length, 0);
+  store.close();
+});
+
+test('WEB-04：Host 拒绝的检索请求以错误值回到 Agent，运行可继续而不是整轮失败', async () => {
+  const store = new WorkspaceStore(makeDataDir());
+  const data = fourGapDataset(); store.insertDataset(data); seedAssets(store, data);
+  const research = new WebResearchService({
+    store, rootDir: store.rootDir, now: NOW,
+    providers: [createStaticSearchProvider('synthetic', [{ url: 'https://example.com/report.pdf', title: 'PDF 报告', snippet: 'x' }])],
+    lookup: async () => [{ address: PUBLIC_IP, family: 4 }],
+    transport: async (url: URL) => url.pathname === '/robots.txt'
+      ? { status: 200, headers: {}, body: Buffer.from(''), remoteAddress: PUBLIC_IP }
+      : { status: 200, headers: { 'content-type': 'application/pdf' }, body: Buffer.from('pdf-bytes'), remoteAddress: PUBLIC_IP },
+  });
+  const runtime = new ControlledRuntime(async tools => {
+    const search = await tools.webSearch({ query: '行业报告' }) as { ok: boolean; hits: Array<{ url: string }> };
+    const rejected = await tools.fetchPage({ url: search.hits[0]!.url });
+    assert.equal(rejected.error, 'content_type_rejected');
+    const missing = await tools.readSnapshot({ snapshotId: 'snap-missing' });
+    assert.equal(missing.error, 'snapshot_not_found');
+    await tools.setCoverage(['外部基准不可用，仅用导入数据']);
+    return { stopReason: 'Host 拒绝后如实收束' };
+  });
+  const run = await runExploration({ store, dataset: data, runtime, runId: 'run-rejected', now: NOW, research });
+  assert.equal(run.status, 'completed', run.stopReason);
+  assert.deepEqual(run.events.filter(event => event.type === 'research_error').map(event => event.details?.error), ['content_type_rejected', 'snapshot_not_found']);
+  assert.equal(run.budget.usedFetches, 0);
   store.close();
 });

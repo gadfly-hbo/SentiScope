@@ -6,10 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { WorkspaceStore } from '../core/workspace-store.ts';
 import { importFile, ImportError } from '../core/import.ts';
 import { standardizeDataset } from '../core/cleaning.ts';
-import { fetchPublicSnapshot, publicTableToRawRows, WebError, type PublicTableMapping } from '../source/public-web.ts';
+import { loadWebResearchConfig, WebResearchService, type SearchProvider } from '../source/web-research.ts';
 import type { CandidateStatus, DatasetVersion } from '../core/mvp-types.ts';
-import { runExploration, type ExplorationRuntime, type PublicFetchRequest } from '../agent/exploration-service.ts';
-import { createDemoRuntime, ensureDemoWorkspace } from './demo.ts';
+import { runExploration, type ExplorationRuntime } from '../agent/exploration-service.ts';
+import { createDemoRuntime, ensureDemoWorkspace, type DemoMode } from './demo.ts';
 import { probeSession, type ProbeResult } from './session-probe.ts';
 
 export type HostOptions = {
@@ -19,15 +19,19 @@ export type HostOptions = {
   fixturesDir?: string;
   seedDemo?: boolean;
   runtimeFactory?: (dataset: DatasetVersion, mode: string) => ExplorationRuntime;
-  enablePublicWeb?: boolean;
-  allowedPublicHosts?: string[];
-  publicMappings?: Record<string, PublicTableMapping>;
+  researchFactory?: (context: { store: WorkspaceStore; dataset: DatasetVersion; mode: string }) => WebResearchService | undefined;
+  maxToolCalls?: number;
+  searchProviders?: SearchProvider[];
+  preferredDomains?: string[];
+  researchBudget?: { maxSearches: number; maxFetches: number; maxSnapshotReads: number };
+  forbiddenValues?: string[];
 };
 
 export type StartedHost = {
   server: Server;
   url: string;
   probe: () => Promise<ProbeResult>;
+  research: { enabled: boolean; providers: string[]; preferredDomains: string[]; budget: { maxSearches: number; maxFetches: number; maxSnapshotReads: number } | null };
 };
 
 const UI_FILE = join(dirname(fileURLToPath(import.meta.url)), '..', 'ui', 'index.html');
@@ -46,42 +50,30 @@ export async function startHost(options: HostOptions): Promise<StartedHost> {
     return lastProbe;
   };
   let dataset = options.fixturesDir ? await ensureDemoWorkspace(store, options.fixturesDir, new Date().toISOString()) : store.listDatasets()[0] ?? null;
-  const runtimeFactory = options.runtimeFactory ?? ((data: DatasetVersion, mode: string) => createDemoRuntime(data, mode === 'zero'));
+  const runtimeFactory = options.runtimeFactory ?? ((data: DatasetVersion, mode: string) => createDemoRuntime(data, mode as DemoMode));
   const controllers = new Map<string, AbortController>();
   const inFlight = new Map<string, Promise<unknown>>();
-  const fetchAndStandardize = async (request: PublicFetchRequest) => {
-    const result = await fetchPublicSnapshot({ rootDir: options.dataDir, url: request.url, allowedHosts: options.allowedPublicHosts ?? [], termsConfirmed: true, now: new Date().toISOString() });
-    store.insertAsset(result.asset);
-    let next: DatasetVersion | undefined;
-    if (request.mapping) {
-      const publicRows = publicTableToRawRows(result.tables, result.asset, request.mapping);
-      if (!publicRows.length) throw new WebError('public_table_empty');
-      next = standardizeDataset({
-        name: `${request.mapping.entity} · ${request.mapping.period} · 公网对比`, version: Math.max(0, ...store.listDatasets().map(item => item.version)) + 1,
-        now: new Date().toISOString(), sourceAssetIds: [...new Set([...(dataset?.sourceAssetIds ?? []), result.asset.id])],
-        rawRows: [...(dataset?.rawRows ?? []), ...publicRows],
-      });
-      store.insertDataset(next); dataset = next;
-    }
-    return { asset: result.asset, tables: result.tables, dataset: next };
-  };
+  const fileConfig = loadWebResearchConfig(join(options.dataDir, 'search.json'));
+  const providers = options.searchProviders ?? fileConfig.providers;
+  const preferredDomains = options.preferredDomains ?? fileConfig.preferredDomains;
+  const researchBudget = options.researchBudget ?? fileConfig.budget;
+  const createResearch = () => new WebResearchService({
+    store, rootDir: options.dataDir, providers, preferredDomains, forbiddenValues: options.forbiddenValues ?? [], ...(researchBudget ? { budget: researchBudget } : {}),
+  });
+  const researchStatus = { enabled: providers.length > 0, providers: providers.map(provider => provider.name), preferredDomains, budget: researchBudget ?? null };
+  const maxToolCalls = options.maxToolCalls ?? 25;
   const startRun = async (data: DatasetVersion, mode: string) => {
     const runId = `run-${Date.now()}-${randomUUID().slice(0, 8)}`;
     const controller = new AbortController();
     controllers.set(runId, controller);
-    const pending = runExploration({ store, dataset: data, runtime: runtimeFactory(data, mode), runId, now: new Date().toISOString(), maxToolCalls: 25, signal: controller.signal,
-      publicFetcher: options.enablePublicWeb ? async request => {
-        const mapping = request.mappingId ? options.publicMappings?.[request.mappingId] : undefined;
-        if (request.mappingId && !mapping) throw new WebError('approved_mapping_required');
-        return fetchAndStandardize({ url: request.url, ...(mapping ? { mapping } : {}) });
-      } : undefined })
+    const research = options.researchFactory?.({ store, dataset: data, mode }) ?? (providers.length ? createResearch() : undefined);
+    const pending = runExploration({ store, dataset: data, runtime: runtimeFactory(data, mode), runId, now: new Date().toISOString(), maxToolCalls, signal: controller.signal, research })
       .finally(() => { controllers.delete(runId); inFlight.delete(runId); });
     inFlight.set(runId, pending);
     return runId;
   };
   if (options.seedDemo && dataset && !store.listRuns().length) {
-    const runId = `run-demo-${randomUUID().slice(0, 8)}`;
-    await runExploration({ store, dataset, runtime: runtimeFactory(dataset, 'qualified'), runId, now: new Date().toISOString(), maxToolCalls: 25 });
+    await inFlight.get(await startRun(dataset, 'qualified'));
   }
 
   const server = createServer(async (req, res) => {
@@ -98,7 +90,13 @@ export async function startHost(options: HostOptions): Promise<StartedHost> {
       if (url.pathname === '/app.js' && method === 'GET') return send(200, readFileSync(UI_JS), 'text/javascript; charset=utf-8');
       if (url.pathname === '/api/candidates' && method === 'GET') return send(200, { candidates: store.listCandidates() });
       if (url.pathname === '/api/datasets' && method === 'GET') return send(200, { datasets: store.listDatasets() });
-      if (url.pathname === '/api/sources' && method === 'GET') return send(200, { sources: store.listAssets().map(asset => ({ ...asset, path: undefined })) });
+      if (url.pathname === '/api/sources' && method === 'GET') return send(200, {
+        sources: store.listAssets().map(asset => ({ ...asset, path: undefined })),
+        searchEvents: store.listSearchEvents(),
+        snapshots: store.listSnapshots().map(snapshot => ({ ...snapshot, text: undefined, excerpt: snapshot.excerpt.slice(0, 500) })),
+        snapshotReads: store.listSnapshotReads(),
+        webResearch: researchStatus,
+      });
       if (url.pathname === '/api/runs' && method === 'GET') return send(200, { runs: store.listRuns() });
       if (url.pathname === '/api/session' && method === 'GET') {
         if (url.searchParams.get('refresh') === '1') await probe();
@@ -115,12 +113,18 @@ export async function startHost(options: HostOptions): Promise<StartedHost> {
       if (runMatch && method === 'GET') {
         const run = store.getRun(runMatch[1]!);
         if (!run) return send(404, { error: 'run_not_found' });
-        return send(200, { run, observations: store.listObservations(run.id) });
+        return send(200, {
+          run,
+          observations: store.listObservations(run.id),
+          searchEvents: store.listSearchEvents(run.id),
+          snapshots: store.listSnapshots(run.id).map(snapshot => ({ ...snapshot, text: undefined })),
+          snapshotReads: store.listSnapshotReads(run.id),
+        });
       }
       if (url.pathname === '/api/runs' && method === 'POST') {
         if (!dataset) return send(409, { error: 'dataset_required' });
         const body = await readJson(req);
-        const mode = body.mode === 'zero' ? 'zero' : 'qualified';
+        const mode = ['zero', 'limited'].includes(String(body.mode)) ? String(body.mode) : 'qualified';
         const runId = await startRun(dataset, mode);
         return send(202, { runId });
       }
@@ -143,20 +147,15 @@ export async function startHost(options: HostOptions): Promise<StartedHost> {
         dataset = next;
         return send(201, { asset: { ...imported.asset, path: undefined }, dataset: next });
       }
-      if (url.pathname === '/api/public-sources' && method === 'POST') {
-        if (!options.enablePublicWeb) return send(403, { error: 'public_web_disabled' });
-        const body = await readJson(req);
-        if (body.termsConfirmed !== true) return send(403, { error: 'terms_required' });
-        const mapping = parsePublicMapping(body.mapping);
-        const result = await fetchAndStandardize({ url: String(body.url), ...(mapping ? { mapping } : {}) });
-        return send(201, { asset: { ...result.asset, path: undefined }, tables: result.tables, dataset: result.dataset ?? null });
-      }
-      const evidenceTextMatch = /^\/api\/evidence-text\/([a-f0-9]{64})$/.exec(url.pathname);
-      if (evidenceTextMatch && method === 'GET') {
-        const asset = store.listAssets().find(item => item.sha256 === evidenceTextMatch[1]);
-        if (!asset) return send(404, { error: 'evidence_not_found' });
-        const bytes = readFileSync(asset.path);
-        return send(200, { text: bytes.subarray(0, 1024 * 1024).toString('utf8'), truncated: bytes.length > 1024 * 1024 });
+      const snapshotTextMatch = /^\/api\/snapshots\/([\w.-]+)\/text$/.exec(url.pathname);
+      if (snapshotTextMatch && method === 'GET') {
+        const snapshot = store.getSnapshot(snapshotTextMatch[1]!);
+        if (!snapshot) return send(404, { error: 'snapshot_not_found' });
+        const requestedOffset = Number(url.searchParams.get('offset') ?? 0);
+        const requestedLength = Number(url.searchParams.get('length') ?? 600);
+        const offset = Number.isFinite(requestedOffset) && requestedOffset > 0 ? Math.floor(requestedOffset) : 0;
+        const length = Number.isFinite(requestedLength) && requestedLength > 0 ? Math.min(6000, Math.floor(requestedLength)) : 600;
+        return send(200, { snapshotId: snapshot.id, offset, length, text: snapshot.text.slice(offset, offset + length), totalLength: snapshot.text.length });
       }
       const evidenceMatch = /^\/api\/evidence\/([a-f0-9]{64})$/.exec(url.pathname);
       if (evidenceMatch && method === 'GET') {
@@ -172,29 +171,15 @@ export async function startHost(options: HostOptions): Promise<StartedHost> {
       }
       return send(404, { error: 'not_found' });
     } catch (error) {
-      if (error instanceof ImportError || error instanceof WebError) return send(400, { error: error.code });
+      if (error instanceof ImportError) return send(400, { error: error.code });
       if (error instanceof Error && ['candidate_not_found', 'too_large', 'invalid_json'].includes(error.message)) return send(400, { error: error.message });
       return send(500, { error: 'host_error', message: (error as Error).message });
     }
   });
   server.on('close', () => { void Promise.allSettled([...inFlight.values()]).then(() => store.close()); });
   return new Promise(resolve => {
-    server.listen(options.port, '127.0.0.1', () => resolve({ server, url: `http://127.0.0.1:${(server.address() as { port: number }).port}`, probe }));
+    server.listen(options.port, '127.0.0.1', () => resolve({ server, url: `http://127.0.0.1:${(server.address() as { port: number }).port}`, probe, research: researchStatus }));
   });
-}
-
-function parsePublicMapping(value: unknown): PublicTableMapping | null {
-  if (value == null) return null;
-  if (typeof value !== 'object') throw new WebError('invalid_public_mapping');
-  const input = value as Record<string, unknown>;
-  if (['metricId', 'entity', 'period', 'unit', 'valueHeader', 'scope', 'currency', 'region'].every(key => typeof input[key] === 'string' && String(input[key]).trim())
-    && typeof input.periodClosed === 'boolean' && ['primary', 'secondary'].includes(String(input.sourceType))) {
-    return {
-      metricId: String(input.metricId), entity: String(input.entity), period: String(input.period), unit: String(input.unit),
-      valueHeader: String(input.valueHeader), periodClosed: input.periodClosed, scope: String(input.scope), currency: String(input.currency), region: String(input.region), sourceType: String(input.sourceType) as 'primary' | 'secondary',
-    };
-  }
-  throw new WebError('invalid_public_mapping');
 }
 
 function isLocalOrigin(origin: string | undefined): boolean {

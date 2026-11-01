@@ -1,10 +1,6 @@
-import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP, isIPv4 } from 'node:net';
 import { request } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { parse } from 'node-html-parser';
-import type { RawRow, SourceAsset } from '../core/mvp-types.ts';
-import { storeRawBytes } from '../core/raw-evidence.ts';
 
 export class WebError extends Error {
   readonly code: string;
@@ -22,28 +18,15 @@ export type WebResponse = {
   remoteAddress: string;
 };
 
-type Lookup = (hostname: string) => Promise<Array<{ address: string; family: number }>>;
-type Transport = (url: URL, address: string, maxBytes: number, timeoutMs: number) => Promise<WebResponse>;
+export type Lookup = (hostname: string) => Promise<Array<{ address: string; family: number }>>;
+export type Transport = (url: URL, address: string, maxBytes: number, timeoutMs: number) => Promise<WebResponse>;
 
-type WebOptions = {
-  rootDir: string;
-  url: string;
-  allowedHosts: string[];
-  termsConfirmed: boolean;
-  now: string;
-  maxBytes?: number;
-  timeoutMs?: number;
-  lookup?: Lookup;
-  transport?: Transport;
-};
-
-export function validatePublicUrl(raw: string, allowedHosts: string[]): URL {
+export function validatePublicUrl(raw: string, allowedHosts: string[] = []): URL {
   const url = new URL(raw);
   if (!['http:', 'https:'].includes(url.protocol)) throw new WebError('scheme_rejected');
   if (url.username || url.password) throw new WebError('credentials_rejected');
   if (url.port && !['80', '443'].includes(url.port)) throw new WebError('port_rejected');
-  if (!allowedHosts.includes(url.hostname)) throw new WebError('host_rejected');
-  if (url.search) throw new WebError('query_rejected');
+  if (allowedHosts.length && !allowedHosts.includes(url.hostname)) throw new WebError('host_rejected');
   if (url.hash) throw new WebError('fragment_rejected');
   return url;
 }
@@ -94,76 +77,7 @@ function ipv6Bytes(address: string): number[] | null {
   return bytes;
 }
 
-export async function fetchPublicSnapshot(options: WebOptions): Promise<{ asset: SourceAsset; tables: string[][][] }> {
-  if (!options.termsConfirmed) throw new WebError('terms_required');
-  const maxBytes = options.maxBytes ?? 2 * 1024 * 1024;
-  const timeoutMs = options.timeoutMs ?? 5000;
-  const lookup = options.lookup ?? (async hostname => dnsLookup(hostname, { all: true, verbatim: true }));
-  const transport = options.transport ?? defaultTransport;
-  const pageUrl = validatePublicUrl(options.url, options.allowedHosts);
-  const result = await secureGet(pageUrl, options.allowedHosts, lookup, transport, maxBytes, timeoutMs, true);
-  if (result.response.status !== 200) throw new WebError('http_error');
-  const contentType = result.response.headers['content-type'] ?? '';
-  if (contentType && !/text\/html|application\/xhtml\+xml/i.test(contentType)) throw new WebError('content_type_rejected');
-  const stored = storeRawBytes(options.rootDir, result.response.body, 'html');
-  const html = result.response.body.toString('utf8');
-  const document = parse(html);
-  const publishedAt = document.querySelector('time')?.getAttribute('datetime') ?? null;
-  const tables = document.querySelectorAll('table').map(table => table.querySelectorAll('tr').map(row => row.querySelectorAll('th,td').map(cell => cell.text.trim())));
-  const asset: SourceAsset = {
-    id: `asset-${stored.sha256.slice(0, 16)}`,
-    kind: 'web',
-    name: document.querySelector('title')?.text.trim() || result.url.hostname,
-    sha256: stored.sha256,
-    mediaType: 'text/html',
-    bytes: result.response.body.length,
-    importedAt: options.now,
-    publishedAt,
-    capturedAt: options.now,
-    locator: result.url.toString(),
-    path: stored.path,
-    metadata: { finalUrl: result.url.toString(), allowedHost: result.url.hostname, termsConfirmed: true, parser: 'node-html-parser@v1' },
-  };
-  return { asset, tables };
-}
-
-export type PublicTableMapping = {
-  metricId: string;
-  entity: string;
-  period: string;
-  unit: string;
-  valueHeader: string;
-  periodClosed: boolean;
-  scope: string;
-  currency: string;
-  region: string;
-  sourceType: 'primary' | 'secondary';
-};
-
-export function publicTableToRawRows(tables: string[][][], asset: SourceAsset, mapping: PublicTableMapping): RawRow[] {
-  const rows: RawRow[] = [];
-  tables.forEach((table, tableIndex) => {
-    const headers = table[0] ?? [];
-    const valueColumn = headers.findIndex(header => header.trim() === mapping.valueHeader);
-    if (valueColumn < 0) return;
-    table.slice(1).forEach((cells, rowIndex) => {
-      const rawValue = cells[valueColumn]?.replace(/[%\s,]/g, '') ?? '';
-      if (!rawValue) return;
-      rows.push({
-        rowNumber: rows.length + 2,
-        values: {
-          metric: mapping.metricId, entity: cells[0]?.trim() || mapping.entity, period: mapping.period, value: rawValue, unit: mapping.unit,
-          label: cells[0] ?? mapping.entity, closed: String(mapping.periodClosed), scope: mapping.scope, currency: mapping.currency, region: mapping.region, sourceType: mapping.sourceType, publishedAt: asset.publishedAt ?? '',
-        },
-        issues: mapping.sourceType === 'secondary' ? ['secondary_source'] : [],
-        source: { assetSha256: asset.sha256, kind: 'web', locator: `table:${tableIndex + 1}:row:${rowIndex + 2}` },
-      });
-    });
-  });
-  return rows;
-}
-
-async function secureGet(initial: URL, allowedHosts: string[], lookup: Lookup, transport: Transport, maxBytes: number, timeoutMs: number, checkRobots = false): Promise<{ url: URL; response: WebResponse }> {
+export async function secureGet(initial: URL, allowedHosts: string[], lookup: Lookup, transport: Transport, maxBytes: number, timeoutMs: number, checkRobots = false): Promise<{ url: URL; response: WebResponse }> {
   let url = initial;
   for (let redirects = 0; redirects <= 3; redirects += 1) {
     url = validatePublicUrl(url.toString(), allowedHosts);
@@ -220,7 +134,7 @@ function robotsPathMatches(prefix: string, path: string): boolean {
   return new RegExp(`^${pattern}${anchored ? '$' : ''}`).test(path);
 }
 
-function defaultTransport(url: URL, address: string, maxBytes: number, timeoutMs: number): Promise<WebResponse> {
+export function defaultTransport(url: URL, address: string, maxBytes: number, timeoutMs: number): Promise<WebResponse> {
   return new Promise((resolve, reject) => {
     const call = url.protocol === 'https:' ? httpsRequest : request;
     const req = call({

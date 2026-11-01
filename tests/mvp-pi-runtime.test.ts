@@ -60,10 +60,11 @@ test('真实 SDK 路径可注入受控会话：prompt 调用、工具白名单�
   assert.equal(outcome.model, 'test-provider:model-x');
   assert.equal(outcome.sessionId, 'session-test-1');
   assert.match(prompt, /只能使用 sentiscope_/);
+  assert.match(prompt, /候选数字必须来自快照原文/);
   assert.equal(prompt.includes('内部秘密'), false);
   assert.equal(disposed, true);
   assert.equal(captured.length, 1);
-  assert.deepEqual(captured[0]!.tools, ['sentiscope_profile', 'sentiscope_query', 'sentiscope_clean', 'sentiscope_public_fetch', 'sentiscope_compare', 'sentiscope_propose', 'sentiscope_observe', 'sentiscope_coverage']);
+  assert.deepEqual(captured[0]!.tools, ['sentiscope_profile', 'sentiscope_query', 'sentiscope_clean', 'sentiscope_web_search', 'sentiscope_fetch_page', 'sentiscope_read_snapshot', 'sentiscope_record_web_fact', 'sentiscope_compare', 'sentiscope_propose', 'sentiscope_observe', 'sentiscope_coverage']);
 });
 
 test('失败会话仍保留身份，SDK 事件脱敏，空文本有安全回退', async () => {

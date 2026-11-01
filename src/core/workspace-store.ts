@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { CaseCandidate, CandidateStatus, DatasetVersion, ExplorationRun, Observation, SourceAsset } from './mvp-types.ts';
+import type { CaseCandidate, CandidateStatus, DatasetVersion, ExplorationRun, Observation, SearchEventRecord, SnapshotReadRecord, SourceAsset, WebSnapshotRecord } from './mvp-types.ts';
 import { canonicalJson } from './raw-evidence.ts';
 
 export class WorkspaceStore {
@@ -23,6 +23,12 @@ export class WorkspaceStore {
       CREATE INDEX IF NOT EXISTS idx_candidates_status ON candidates(status, updated_at);
       CREATE TABLE IF NOT EXISTS reviews (candidate_id TEXT NOT NULL, created_at TEXT NOT NULL, status TEXT NOT NULL, note TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS idx_reviews_candidate ON reviews(candidate_id, created_at);
+      CREATE TABLE IF NOT EXISTS search_events (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, kind TEXT NOT NULL, created_at TEXT NOT NULL, payload TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS idx_search_events_run ON search_events(run_id, created_at);
+      CREATE TABLE IF NOT EXISTS web_snapshots (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, asset_sha256 TEXT NOT NULL, created_at TEXT NOT NULL, payload TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS idx_web_snapshots_run ON web_snapshots(run_id, created_at);
+      CREATE TABLE IF NOT EXISTS snapshot_reads (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, snapshot_id TEXT NOT NULL, created_at TEXT NOT NULL, payload TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS idx_snapshot_reads_run ON snapshot_reads(run_id, created_at);
     `);
   }
 
@@ -165,6 +171,44 @@ export class WorkspaceStore {
       this.db.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  appendSearchEvent(event: SearchEventRecord): void {
+    this.db.prepare('INSERT INTO search_events (id, run_id, kind, created_at, payload) VALUES (?, ?, ?, ?, ?)')
+      .run(event.id, event.runId, event.kind, event.createdAt, JSON.stringify(event));
+  }
+
+  listSearchEvents(runId?: string): SearchEventRecord[] {
+    return runId
+      ? rows(this.db.prepare('SELECT payload FROM search_events WHERE run_id = ? ORDER BY created_at, id').all(runId))
+      : rows(this.db.prepare('SELECT payload FROM search_events ORDER BY created_at, id').all());
+  }
+
+  insertSnapshot(snapshot: WebSnapshotRecord): void {
+    this.db.prepare('INSERT INTO web_snapshots (id, run_id, asset_sha256, created_at, payload) VALUES (?, ?, ?, ?, ?)')
+      .run(snapshot.id, snapshot.runId, snapshot.assetSha256, snapshot.capturedAt, JSON.stringify(snapshot));
+  }
+
+  getSnapshot(id: string): WebSnapshotRecord | null {
+    const row = this.db.prepare('SELECT payload FROM web_snapshots WHERE id = ?').get(id) as { payload: string } | undefined;
+    return row ? JSON.parse(row.payload) as WebSnapshotRecord : null;
+  }
+
+  listSnapshots(runId?: string): WebSnapshotRecord[] {
+    return runId
+      ? rows(this.db.prepare('SELECT payload FROM web_snapshots WHERE run_id = ? ORDER BY created_at, id').all(runId))
+      : rows(this.db.prepare('SELECT payload FROM web_snapshots ORDER BY created_at, id').all());
+  }
+
+  appendSnapshotRead(read: SnapshotReadRecord): void {
+    this.db.prepare('INSERT INTO snapshot_reads (id, run_id, snapshot_id, created_at, payload) VALUES (?, ?, ?, ?, ?)')
+      .run(read.id, read.runId, read.snapshotId, read.createdAt, JSON.stringify(read));
+  }
+
+  listSnapshotReads(runId?: string): SnapshotReadRecord[] {
+    return runId
+      ? rows(this.db.prepare('SELECT payload FROM snapshot_reads WHERE run_id = ? ORDER BY created_at, id').all(runId))
+      : rows(this.db.prepare('SELECT payload FROM snapshot_reads ORDER BY created_at, id').all());
   }
 
   close(): void { this.db.close(); }

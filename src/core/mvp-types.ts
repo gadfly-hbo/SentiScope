@@ -138,6 +138,7 @@ export type CandidateInput = {
   refutationObservationId: string;
   thresholdVersion: string;
   calculationLocator?: string;
+  singleSourceLimitation?: string;
 };
 
 export type CaseCandidate = CandidateInput & {
@@ -157,6 +158,67 @@ export type ReviewRecord = {
   createdAt: string;
 };
 
+export type SourceTier = 'A' | 'B' | 'C';
+
+export type SearchHit = {
+  url: string;
+  title: string;
+  snippet: string;
+  tier?: SourceTier;
+  status?: 'hit' | 'fetched' | 'abandoned';
+};
+
+export type SearchEventRecord = {
+  id: string;
+  runId: string;
+  kind: 'search' | 'selection';
+  query: string;
+  provider: string;
+  callKey: string;
+  hits: SearchHit[];
+  createdAt: string;
+  error?: string;
+  attempts?: Array<{ provider: string; error: string }>;
+};
+
+export type WebSnapshotRecord = {
+  id: string;
+  runId: string;
+  assetId: string;
+  assetSha256: string;
+  url: string;
+  finalUrl: string;
+  title: string;
+  publishedAt: string | null;
+  capturedAt: string;
+  contentType: string;
+  sourceTier: SourceTier;
+  callKey: string;
+  text: string;
+  excerpt: string;
+  parseStatus: 'parsed' | 'needs_review';
+};
+
+export type SnapshotReadRecord = {
+  id: string;
+  runId: string;
+  snapshotId: string;
+  offset: number;
+  length: number;
+  text: string;
+  callKey: string;
+  createdAt: string;
+};
+
+export type ResearchBudget = {
+  maxSearches: number;
+  maxFetches: number;
+  maxSnapshotReads: number;
+  usedSearches: number;
+  usedFetches: number;
+  usedSnapshotReads: number;
+};
+
 export type RunEvent = {
   type: string;
   at: string;
@@ -172,7 +234,7 @@ export type ExplorationRun = {
   status: 'running' | 'completed' | 'cancelled' | 'failed';
   startedAt: string;
   finishedAt: string | null;
-  budget: { maxToolCalls: number; usedToolCalls: number };
+  budget: { maxToolCalls: number; usedToolCalls: number } & ResearchBudget;
   coverage: string[];
   candidateIds: string[];
   stopReason: string;

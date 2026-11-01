@@ -7,14 +7,13 @@ import { fileURLToPath } from 'node:url';
 import { startHost } from '../src/host/server.ts';
 import { probeSession } from '../src/host/session-probe.ts';
 import { PiAgentRuntime } from '../src/agent/pi-runtime.ts';
-import { createDemoRuntime } from '../src/host/demo.ts';
+import { createDemoResearch, createDemoRuntime } from '../src/host/demo.ts';
 
 const root = join(fileURLToPath(import.meta.url), '..', '..');
 const dataDir = process.env.SENTISCOPE_HOME ?? join(homedir(), '.sentiscope', 'mvp');
 mkdirSync(dataDir, { recursive: true });
 const hostPort = Number(process.env.SENTISCOPE_HOST_PORT ?? 4180);
 const realModel = process.env.SENTISCOPE_REAL_MODEL === '1';
-const allowedPublicHosts = (process.env.SENTISCOPE_PUBLIC_HOSTS ?? '').split(',').map(value => value.trim()).filter(Boolean);
 const forbiddenValues = (process.env.SENTISCOPE_EGRESS_BLOCK ?? '').split('\n').filter(Boolean);
 
 const host = await startHost({
@@ -23,17 +22,22 @@ const host = await startHost({
   skillsDir: join(root, 'skills'),
   fixturesDir: join(root, 'fixtures', 'mvp'),
   seedDemo: !realModel,
-  enablePublicWeb: process.env.SENTISCOPE_PUBLIC_WEB === '1',
-  allowedPublicHosts,
+  forbiddenValues,
+  maxToolCalls: Number(process.env.SENTISCOPE_MAX_TOOL_CALLS ?? 40),
   runtimeFactory: realModel
     ? () => new PiAgentRuntime({ skillsDir: join(root, 'skills'), cwd: dataDir, model: 'pi-configured', egress: { allowedDimensions: ['closed', 'comparable', 'label'], forbiddenValues } })
-    : (dataset, mode) => createDemoRuntime(dataset, mode === 'zero'),
+    : (dataset, mode) => createDemoRuntime(dataset, mode),
+  researchFactory: realModel
+    ? undefined
+    : ({ store, mode }) => mode === 'zero' ? undefined : createDemoResearch(store, join(root, 'fixtures', 'mvp'), mode === 'limited' ? { maxSearches: 1, maxFetches: 1, maxSnapshotReads: 2 } : undefined),
 });
 
 console.log(`[SentiScope] 数据目录：${dataDir}`);
 console.log(`[SentiScope] 管理界面：${host.url}`);
 console.log(`[SentiScope] 探索模式：${realModel ? '真实模型（使用已保存的 Pi 配置）' : '合成受控演示（不调用模型）'}`);
-console.log(`[SentiScope] 公网采集：${process.env.SENTISCOPE_PUBLIC_WEB === '1' ? `启用，白名单=${allowedPublicHosts.join(',') || '空'}` : '禁用'}`);
+console.log(`[SentiScope] 公网检索：${host.research.enabled
+  ? `启用，Provider=${host.research.providers.join(',')}，优先域=${host.research.preferredDomains.join(',') || '空'}，预算=${JSON.stringify(host.research.budget)}`
+  : `未配置（${join(dataDir, 'search.json')}），探索只使用导入数据`}${realModel ? '' : '；演示 limited 运行使用本地 fixture Provider，不出网'}`);
 
 try {
   const probe = await probeSession(join(root, 'skills'));

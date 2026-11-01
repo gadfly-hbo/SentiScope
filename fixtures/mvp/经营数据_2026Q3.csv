@@ -5,10 +5,6 @@ revenue,西南,2026-09,938,万元,true,true,西南月收入,经营收入,CNY,西
 revenue,西南,2025-09,1000,万元,true,true,去年同期,经营收入,CNY,西南
 revenue,自身,2026Q3,9480,万元,true,true,自身本期收入,同一细分市场,CNY,同一地域
 revenue,自身,2025Q3,10000,万元,true,true,自身去年同期收入,同一细分市场,CNY,同一地域
-revenue,竞对A,2026Q3,21420,万元,true,true,竞对A本期收入,同一细分市场,CNY,同一地域
-revenue,竞对A,2025Q3,20000,万元,true,true,竞对A去年同期收入,同一细分市场,CNY,同一地域
-revenue,行业,2026Q3,30900,万元,true,true,行业本期收入,同一细分市场,CNY,同一地域
-revenue,行业,2025Q3,30000,万元,true,true,行业去年同期收入,同一细分市场,CNY,同一地域
 revenue,华南,2026-09,1050,万元,true,true,华南月收入,经营收入,CNY,华南
 revenue.target,华南,2026-09,1000,万元,true,true,内部目标,经营收入,CNY,华南
 orders,线上,2026-09,8140,单,true,false,线上订单（同店范围待补）,经营订单,CNY,线上

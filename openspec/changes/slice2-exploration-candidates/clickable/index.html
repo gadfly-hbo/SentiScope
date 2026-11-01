@@ -255,7 +255,7 @@
       <details class="source-tree" open>
         <summary>来源资产</summary>
         <button class="nav-button" data-nav="sources">内部文件 <span class="nav-count">2</span></button>
-        <button class="nav-button" data-nav="sources">公网快照 <span class="nav-count">2</span></button>
+        <button class="nav-button" data-nav="sources">搜索快照 <span class="nav-count">2</span></button>
       </details>
       <div class="sidebar-bottom"><div class="local-state">本机工作区可用</div><div>模型与公网：仅演示，未连接</div></div>
     </aside>
@@ -280,16 +280,19 @@
 
         <section class="view" id="view-exploration">
           <div class="workspace">
-            <div class="page-head"><div class="page-head-main"><div class="eyebrow">真实 Agent 的工作方式 · 合成回放</div><h1>探索运行</h1><p class="page-desc">Agent 自主选择比较和补证路径；Host 只提供数据、工具、权限与预算。模型文本不直接成为证据。</p></div><div class="page-actions"><button class="btn" id="zero-run-toggle">查看零候选样例</button><button class="btn" id="replay-run">重新演示</button></div></div>
-            <div class="context-banner"><b>标准数据集 v3</b><span>12,480 行</span><span>模型：固定配置（未连接）</span><span>工具预算：18 / 25</span><span>公网白名单：2 个合成来源</span></div>
+            <div class="page-head"><div class="page-head-main"><div class="eyebrow">真实 Agent 的工作方式 · 合成回放</div><h1>探索运行</h1><p class="page-desc">Agent 自主选择比较和补证路径；Host 只提供数据、工具、权限与预算。模型文本不直接成为证据。</p></div><div class="page-actions"><button class="btn" id="zero-run-toggle">查看零候选样例</button><button class="btn" id="limited-run-toggle">查看 limited 样例</button><button class="btn" id="replay-run">重新演示</button></div></div>
+            <div class="context-banner"><b>标准数据集 v3</b><span>12,480 行</span><span>模型：固定配置（未连接）</span><span>工具预算：18 / 25</span><span>搜索 Provider：合成链 · 搜索 2／8 · 读取 2／6</span></div>
             <div class="run-summary" id="run-summary"><div class="summary-item"><strong>4</strong><span>比较类型已检查</span></div><div class="summary-item"><strong>3</strong><span>候选通过门禁</span></div><div class="summary-item"><strong>1</strong><span>补证项，仅留观察</span></div><div class="summary-item"><strong>0</strong><span>自动创建 Case / Project</span></div></div>
+            <details class="cleaning-steps" style="margin-bottom:18px" open><summary>搜索命中与放弃 URL（合成线索，不是证据）</summary><ol><li><b>命中 1</b> · 竞对 A 季度披露 · Agent 选择 fetch_page → 快照</li><li><b>命中 2</b> · 二手新闻转述 · 来源等级 C → Agent 放弃，原因“非一手来源”</li><li><b>命中 3</b> · 统计机构表格 · Agent 选择 fetch_page → 快照</li><li><b>命中 4</b> · PDF 报告 · 首版不支持 PDF → Agent 放弃并留待补证</li></ol></details>
             <div class="activity-card">
               <div class="activity-head"><h2>Agent 活动与工具证据</h2><span>运行 run-explore-003 · 已停止</span></div>
               <ul class="activity-list" id="activity-list">
                 <li><time class="activity-time">10:02:11</time><div><div class="activity-title"><span class="tool-pill">数据画像</span>先确认可用字段与比较范围</div><div class="activity-detail">识别收入、订单、实体、期间、目标和行业字段；3 行单位冲突已隔离，不进入比较。</div></div></li>
                 <li><time class="activity-time">10:03:02</time><div><div class="activity-title"><span class="tool-pill">目标比较</span>华东收入差距成立</div><div class="activity-detail">实际 880 万，目标 1,000 万；工具计算差额 −120 万、差率 −12%。目标与实际均已结期、单位一致。</div></div></li>
                 <li><time class="activity-time">10:04:18</time><div><div class="activity-title"><span class="tool-pill">历史比较</span>订单下滑假设需要补充同店口径</div><div class="activity-detail">表面同比 −18.4%，但今年新增门店 12 家。全渠道与同店范围不同，Agent 将该假设降为待补证。</div></div></li>
-                <li><time class="activity-time">10:05:43</time><div><div class="activity-title"><span class="tool-pill">公网快照</span>读取竞对与行业公开基准</div><div class="activity-detail">竞对 A 同期增速 +7.1%，行业基准 +3.0%；均保存公开披露范围、发布时间和原始快照定位。</div></div></li>
+                <li><time class="activity-time">10:05:20</time><div><div class="activity-title"><span class="tool-pill">web_search</span>Agent 自主搜索外部基准</div><div class="activity-detail">query=“2026Q3 零售电商 行业增速 竞对 A 披露”；返回 8 条命中，仅作为线索，不进入候选事实。</div></div></li>
+                <li><time class="activity-time">10:05:43</time><div><div class="activity-title"><span class="tool-pill">fetch_page</span>选择性读取 2 个公开页面</div><div class="activity-detail">Agent 从命中中选择竞对 A 披露与行业统计页；Host 校验 SSRF／robots／大小后保存快照，返回 6KB 摘要。</div></div></li>
+                <li><time class="activity-time">10:05:58</time><div><div class="activity-title"><span class="tool-pill">read_snapshot</span>核对原文数字</div><div class="activity-detail">竞对 A 同期增速 +7.1%，行业基准 +3.0%；引用来自快照表格单元格，而非搜索摘要。</div></div></li>
                 <li><time class="activity-time">10:07:09</time><div><div class="activity-title"><span class="tool-pill">反证检查</span>检查区域拆分与数据质量解释</div><div class="activity-detail">华东差距不是由单位换算或单一缺失行造成；其他区域拆分保留为支持／限制证据，未推断根因。</div></div></li>
                 <li><time class="activity-time">10:08:20</time><div><div class="activity-title"><span class="tool-pill">候选门禁</span>提交描述性候选，拒绝根因表述</div><div class="activity-detail">目标、竞对候选通过；行业差距保留为候选。所有标题只陈述差距，未写“竞对导致”或期末预测。</div></div></li>
               </ul>
@@ -301,7 +304,7 @@
         <section class="view" id="view-datasets">
           <div class="board">
             <div class="page-head"><div class="page-head-main"><div class="eyebrow">原始事实与标准数据分层</div><h1>标准数据集</h1><p class="page-desc">清洗可重放、问题可定位、血缘可下钻。原始文件永不被覆盖，无法确认的值不被静默填补。</p></div><div class="page-actions"><button class="btn primary" data-open-import>导入数据</button></div></div>
-            <div class="context-banner"><b>经营导入包 · 标准数据集 v3</b><span>上游：2 个文件＋2 个公网快照</span><span>清洗步骤：7</span><span>状态：可用于描述性分析</span></div>
+            <div class="context-banner"><b>经营导入包 · 标准数据集 v3</b><span>上游：2 个文件＋2 个搜索快照</span><span>清洗步骤：7</span><span>状态：可用于描述性分析</span></div>
             <div class="dataset-grid">
               <div class="info-card"><h2>数据集概况</h2><dl class="kv"><dt>标准记录</dt><dd>12,480 行 · 18 个字段</dd><dt>核心结构</dt><dd>指标＋实体＋期间＋数值＋单位＋维度</dd><dt>期间</dt><dd>2025-01 至 2026-09 · Asia/Shanghai</dd><dt>原始哈希</dt><dd class="mono">sha256:7d31a0…91c2</dd><dt>标准版本哈希</dt><dd class="mono">sha256:da03b8…77ef</dd></dl></div>
               <div class="info-card"><h2>质量处理</h2><ul class="quality-list"><li>混合单位<strong>12 行</strong><span>显式换算</span></li><li>重复记录<strong>3 行</strong><span>隔离，未删原件</span></li><li>目标缺失<strong>2 行</strong><span>未填补</span></li><li>单位冲突<strong>3 行</strong><span>阻止比较</span></li></ul></div>
@@ -315,24 +318,24 @@
 
         <section class="view" id="view-sources">
           <div class="board">
-            <div class="page-head"><div class="page-head-main"><div class="eyebrow">所有事实都有来源</div><h1>来源资产</h1><p class="page-desc">内部文件与公网快照统一保留原字节、内容哈希和时间语义。公网来源仅来自白名单，页面文字不具有指令权限。</p></div><div class="page-actions"><button class="btn primary" data-open-import>管理来源</button></div></div>
+            <div class="page-head"><div class="page-head-main"><div class="eyebrow">所有事实都有来源</div><h1>来源资产</h1><p class="page-desc">内部文件、搜索事件与页面快照统一保留内容哈希和时间语义。搜索摘要只是线索；候选事实必须引用快照原文，页面文字不具有指令权限。</p></div><div class="page-actions"><button class="btn primary" data-open-import>管理来源</button></div></div>
             <div class="source-list">
               <article class="source-card"><div><div class="source-kind">用户文件 · 内部数据</div><h2>经营数据_2026Q3.xlsx（合成）</h2><div class="source-meta">导入 2026-10-03 09:42 · 12,480 行 · sha256:7d31a0…91c2 · 解析成功</div></div><div class="source-status">原始字节已保存<br>标准数据集 v3</div></article>
               <article class="source-card"><div><div class="source-kind">用户文件 · 目标数据</div><h2>年度目标_2026.csv（合成）</h2><div class="source-meta">导入 2026-10-03 09:43 · 36 行 · sha256:19b2e7…a104 · 2 行目标缺失未填补</div></div><div class="source-status">原始字节已保存<br>质量报告可用</div></article>
-              <article class="source-card" id="source-competitor"><div><div class="source-kind">公网快照 · 竞对基准</div><h2>竞对 A 同期公开披露（合成快照）</h2><div class="source-meta">发布 2026-10-01 · 抓取 2026-10-03 09:45 · 白名单内 · 一手来源 · 非真实 URL</div><details class="snapshot-detail"><summary>查看引用位置</summary><p>披露表格第 2 行 · 2026Q3 收入同比增速：<mark>+7.1%</mark><br>范围：与自身相同的细分市场和季度。</p></details></div><div class="source-status">快照与表格定位完整<br>口径已核对</div></article>
-              <article class="source-card" id="source-industry"><div><div class="source-kind">公网快照 · 行业基准</div><h2>细分行业 9 月统计（合成快照）</h2><div class="source-meta">发布 2026-10-02 · 抓取 2026-10-03 09:46 · 白名单内 · 统计范围与周期已记录</div><details class="snapshot-detail"><summary>查看引用位置</summary><p>统计表第 3 行 · 2026Q3 细分行业收入增速：<mark>+3.0%</mark><br>范围：同一地域、同一行业分类和季度。</p></details></div><div class="source-status">快照与文本定位完整<br>无数据滞后隐藏</div></article>
+              <article class="source-card" id="source-competitor"><div><div class="source-kind">搜索快照 · 竞对基准</div><h2>竞对 A 同期公开披露（合成快照）</h2><div class="source-meta">query=2026Q3 竞对 A 披露 · 命中排名 1 · Agent 选择读取 · 发布 2026-10-01 · 抓取 2026-10-03 09:45 · 一手来源</div><details class="snapshot-detail"><summary>查看引用位置</summary><p>披露表格第 2 行 · 2026Q3 收入同比增速：<mark>+7.1%</mark><br>范围：与自身相同的细分市场和季度。callKey=search:q1:a1:fetch:2。</p></details></div><div class="source-status">快照与表格定位完整<br>口径已核对</div></article>
+              <article class="source-card" id="source-industry"><div><div class="source-kind">搜索快照 · 行业基准</div><h2>细分行业 9 月统计（合成快照）</h2><div class="source-meta">query=2026Q3 行业收入增速 · 命中排名 3 · Agent 选择读取 · 发布 2026-10-02 · 抓取 2026-10-03 09:46 · 统计机构</div><details class="snapshot-detail"><summary>查看引用位置</summary><p>统计表第 3 行 · 2026Q3 细分行业收入增速：<mark>+3.0%</mark><br>范围：同一地域、同一行业分类和季度。callKey=search:q2:a1:fetch:3。</p></details></div><div class="source-status">快照与文本定位完整<br>无数据滞后隐藏</div></article>
             </div>
           </div>
         </section>
       </main>
       <aside class="source-panel" aria-label="数据来源面板">
-        <div class="panel-head"><div><h2>数据来源</h2><p>导入内部数据，管理公网白名单</p></div><button class="icon-btn" id="import-close" aria-label="关闭数据来源">关闭</button></div>
+        <div class="panel-head"><div><h2>数据来源</h2><p>导入内部数据，配置搜索 Provider</p></div><button class="icon-btn" id="import-close" aria-label="关闭数据来源">关闭</button></div>
         <div class="panel-body">
           <button class="btn primary" id="demo-import">导入合成文件</button>
           <p class="panel-help">MVP 支持 CSV / XLSX。原始字节只读保存，解析与清洗生成新版本。此 Demo 不读取任何本地文件。</p>
-          <button class="btn" id="demo-web">添加上网白名单示例</button>
-          <p class="panel-help">真实运行前需分别确认公网域名与模型数据出口；不登录、不绕过反爬。</p>
-          <ul class="file-list" id="file-list"><li><div class="file-name">经营数据_2026Q3.xlsx</div><div class="file-meta">合成 · 已生成标准数据集 v3</div></li><li><div class="file-name">年度目标_2026.csv</div><div class="file-meta">合成 · 2 行目标缺失未填补</div></li><li><div class="file-name">竞对与行业公开快照</div><div class="file-meta">合成 · 2 个白名单来源</div></li></ul>
+          <button class="btn" id="demo-web">演示 web_search 链路</button>
+          <p class="panel-help">真实运行前需确认搜索 Provider、密钥环境、配额与模型数据出口；不登录、不绕过反爬、不做爬虫。</p>
+          <ul class="file-list" id="file-list"><li><div class="file-name">经营数据_2026Q3.xlsx</div><div class="file-meta">合成 · 已生成标准数据集 v3</div></li><li><div class="file-name">年度目标_2026.csv</div><div class="file-meta">合成 · 2 行目标缺失未填补</div></li><li><div class="file-name">搜索链：合成 Provider</div><div class="file-meta">web_search 2 · fetch_page 2 · 快照 2</div></li></ul>
         </div>
       </aside>
     </div>
@@ -420,7 +423,7 @@ function openEvidence(index) {
     const card = $(target.source), detail = card.querySelector('details'), mark = card.querySelector('mark');
     detail.open = true; mark.classList.add('highlight-target'); card.scrollIntoView({block:'center'});
     setTimeout(() => mark.classList.remove('highlight-target'),2200);
-    toast('已定位公网快照中的引用数字与披露段落；未打开真实 URL。');
+    toast('已定位搜索快照中的引用数字与原文段落；未发起真实搜索。');
     return;
   }
   setView('datasets'); renderPreview(target.kind); $('cleaning-lineage').open = target.kind === 'clean';
@@ -468,20 +471,31 @@ $('sidebar-toggle').addEventListener('click',() => {
 function toggleImport(open) { $('app').classList.toggle('import-open',open); }
 $('import-toggle').addEventListener('click',() => $('app').classList.toggle('import-open')); $('import-main').addEventListener('click',() => toggleImport(true)); $('import-close').addEventListener('click',() => toggleImport(false)); document.querySelectorAll('[data-open-import]').forEach(b => b.addEventListener('click',() => toggleImport(true)));
 $('demo-import').addEventListener('click',() => { if (!$('file-list').textContent.includes('新演示数据.csv')) { const li = document.createElement('li'); li.innerHTML = '<div class="file-name">新演示数据.csv</div><div class="file-meta">合成内存项 · 未读取本地文件</div>'; $('file-list').append(li); } toast('已添加合成文件条目；未读取本地文件、未执行解析。'); });
-$('demo-web').addEventListener('click',() => toast('已展示合成白名单示例；未发起任何公网请求。'));
-$('help-button').addEventListener('click',() => toast('MVP：导入与公网数据 → 可重放清洗 → 描述性探索 → Case 候选。'));
+$('demo-web').addEventListener('click',() => toast('已展示合成 web_search → fetch_page → read_snapshot 链路；未发起真实搜索。'));
+$('help-button').addEventListener('click',() => toast('MVP：导入数据 → 可重放清洗 → 描述性探索 → deepresearch 公网补证 → Case 候选。'));
 $('replay-run').addEventListener('click',() => { const items = [...$('activity-list').children]; items.forEach(li => li.hidden = true); items.forEach((li,i) => setTimeout(() => li.hidden = false,180 * (i + 1))); toast('正在回放合成探索事件；未调用真实模型。'); });
 const positiveRun = { summary:$('run-summary').innerHTML, activity:$('activity-list').innerHTML, stop:$('stop-reason').textContent };
-let showZeroRun = false;
+let showZeroRun = false, showLimitedRun = false;
+function restorePositiveRun() {
+  showZeroRun = false; showLimitedRun = false;
+  $('run-summary').innerHTML = positiveRun.summary; $('activity-list').innerHTML = positiveRun.activity; $('stop-reason').textContent = positiveRun.stop;
+  $('zero-run-toggle').textContent = '查看零候选样例'; $('limited-run-toggle').textContent = '查看 limited 样例';
+}
 $('zero-run-toggle').addEventListener('click',() => {
-  showZeroRun = !showZeroRun;
-  if (showZeroRun) {
-    $('run-summary').innerHTML = '<div class="summary-item"><strong>4</strong><span>比较类型已检查</span></div><div class="summary-item"><strong>0</strong><span>候选通过门禁</span></div><div class="summary-item"><strong>2</strong><span>观察保留，无需补造问题</span></div><div class="summary-item"><strong>0</strong><span>自动创建 Case / Project</span></div>';
-    $('activity-list').innerHTML = '<li><time class="activity-time">11:02:10</time><div><div class="activity-title"><span class="tool-pill">数据画像</span>数据完整性与比较口径可用</div><div class="activity-detail">目标、同期、竞对与行业数据均在授权范围内；没有未解决的单位冲突。</div></div></li><li><time class="activity-time">11:04:32</time><div><div class="activity-title"><span class="tool-pill">描述性比较</span>四类差距均未达到候选门禁</div><div class="activity-detail">目标差 −2.1%，同比 +1.8%，竞对增速差 −1.2pp，行业增速差 −0.6pp；完整搜索覆盖与舍弃原因已保存。</div></div></li><li><time class="activity-time">11:05:01</time><div><div class="activity-title"><span class="tool-pill">正常停止</span>零候选是有效结果</div><div class="activity-detail">没有合格问题，Agent 不编造候选；2 条普通观察仍可查询与复核。</div></div></li>';
-    $('stop-reason').textContent = '停止原因：已检查全部约定基准，没有候选通过门禁。本次为正常零候选运行，未创建 Case 或 Project。';
-  } else { $('run-summary').innerHTML = positiveRun.summary; $('activity-list').innerHTML = positiveRun.activity; $('stop-reason').textContent = positiveRun.stop; }
-  $('zero-run-toggle').textContent = showZeroRun ? '查看有候选样例' : '查看零候选样例';
-  toast(showZeroRun ? '已切换零候选运行：观察保留，但没有候选进入看板。' : '已恢复有候选运行。');
+  if (showZeroRun) { restorePositiveRun(); toast('已恢复有候选运行。'); return; }
+  restorePositiveRun(); showZeroRun = true; $('zero-run-toggle').textContent = '查看有候选样例';
+  $('run-summary').innerHTML = '<div class="summary-item"><strong>4</strong><span>比较类型已检查</span></div><div class="summary-item"><strong>0</strong><span>候选通过门禁</span></div><div class="summary-item"><strong>2</strong><span>观察保留，无需补造问题</span></div><div class="summary-item"><strong>0</strong><span>自动创建 Case / Project</span></div>';
+  $('activity-list').innerHTML = '<li><time class="activity-time">11:02:10</time><div><div class="activity-title"><span class="tool-pill">数据画像</span>数据完整性与比较口径可用</div><div class="activity-detail">目标、同期、竞对与行业数据均在授权范围内；没有未解决的单位冲突。</div></div></li><li><time class="activity-time">11:04:32</time><div><div class="activity-title"><span class="tool-pill">描述性比较</span>四类差距均未达到候选门禁</div><div class="activity-detail">目标差 −2.1%，同比 +1.8%，竞对增速差 −1.2pp，行业增速差 −0.6pp；完整搜索覆盖与舍弃原因已保存。</div></div></li><li><time class="activity-time">11:05:01</time><div><div class="activity-title"><span class="tool-pill">正常停止</span>零候选是有效结果</div><div class="activity-detail">没有合格问题，Agent 不编造候选；2 条普通观察仍可查询与复核。</div></div></li>';
+  $('stop-reason').textContent = '停止原因：已检查全部约定基准，没有候选通过门禁。本次为正常零候选运行，未创建 Case 或 Project。';
+  toast('已切换零候选运行：观察保留，但没有候选进入看板。');
+});
+$('limited-run-toggle').addEventListener('click',() => {
+  if (showLimitedRun) { restorePositiveRun(); toast('已恢复有候选运行。'); return; }
+  restorePositiveRun(); showLimitedRun = true; $('limited-run-toggle').textContent = '查看完整运行样例';
+  $('run-summary').innerHTML = '<div class="summary-item"><strong>4</strong><span>比较类型已检查</span></div><div class="summary-item"><strong>1</strong><span>候选通过门禁</span></div><div class="summary-item"><strong>2</strong><span>待补证，不硬凑</span></div><div class="summary-item"><strong>8/8</strong><span>搜索配额已用尽</span></div>';
+  $('activity-list').innerHTML = '<li><time class="activity-time">12:02:10</time><div><div class="activity-title"><span class="tool-pill">web_search</span>搜索配额耗尽</div><div class="activity-detail">第 8 次搜索返回 quota-exhausted；Host 以错误值提示收束，不隐藏重试。</div></div></li><li><time class="activity-time">12:02:11</time><div><div class="activity-title"><span class="tool-pill">fetch_page</span>读取配额仅剩 0</div><div class="activity-detail">竞对与行业页面未能继续读取；搜索摘要保持线索状态，不进入候选事实。</div></div></li><li><time class="activity-time">12:02:40</time><div><div class="activity-title"><span class="tool-pill">候选门禁</span>仅提交已有快照支持的目标候选</div><div class="activity-detail">1 个目标候选证据完整；竞对与行业差距降为待补证，不使用未取证摘要补齐。</div></div></li><li><time class="activity-time">12:02:41</time><div><div class="activity-title"><span class="tool-pill">limited 停止</span>配额边界如实披露</div><div class="activity-detail">运行以 limited 结束；2 个待补证项与放弃 URL 保留，可追加预算后继续。</div></div></li>';
+  $('stop-reason').textContent = '停止原因：搜索与读取配额耗尽。1 个候选通过门禁，2 项待补证；未把搜索摘要写成证据。';
+  toast('已切换 limited 运行：配额耗尽、待补证保留，不伪造候选。');
 });
 const previewData = {
   clean:{title:'标准数据预览',head:['指标','实体','期间','数值','单位','数据质量'],rows:[['revenue.monthly','华东','2026-09','880','万元','可用'],['revenue.monthly','华南','2026-09','1,050','万元','可用'],['target.revenue','华东','2026-09','1,000','万元','内部目标'],['orders.monthly','线上','2026-09','8,140','单','同店范围待补'],['support.wait_seconds','华南','2026-09','46','秒','可用'],['target.wait_seconds','华南','2026-09','30','秒','内部目标'],['revenue.monthly','西南','2026-09','938','万元','可用'],['revenue.growth','自身','2026Q3','−5.2','%','工具计算']],note:'血缘：原始文件 → 解析 v1 → 字段映射 → 单位标准化 → 实体别名 → 标准数据集 v3。'},

@@ -1,6 +1,6 @@
 # slice2-exploration-candidates 结果记录
 
-状态：LOCAL_IMPLEMENTED（本机受控路径完成；真实模型、真实公网与 held-out 验收未运行，待用户授权与配置）。分支 `work/qoder/slice2-exploration-candidates`，基线 `main@cb3103e`；候选尚未提交、推送或创建 PR。
+状态：ACCEPTANCE_ABORTED（本机受控实施完成；真实模型执行出现 FAIL，公网／预算／UI 用例 NOT_RUN，用户决定中止，未签发验收通过或完成结论）。分支 `work/qoder/slice2-exploration-candidates`，基线 `main@cb3103e`；已提交并推送，未创建 PR。
 
 ## 实施记录
 
@@ -32,6 +32,33 @@
 - 一次复核请求因模型服务错误未返回，已重试；最终独立复核 **PASS**：复跑 `npm run check`（39/39）、`npm audit` 0 漏洞，并独立 smoke 真实入口（受控模式）、证据文本 API、公网禁用与会话探针。复核结论：此前阻断项全部关闭；真实模型／真实公网／held-out／正式浏览器全量走查属授权后验收，非实现阻断。
 - 非阻断观察已记录：CSV 内部空行会使逻辑行定位与物理行偏移、WEB-05 可补专门用例、异常 ZIP 可能以 500 而非 400 呈现但 fail-closed。
 
+## 真实验收执行与中止（EVAL-2026-001）
+
+- 2026-10-31 用户授权真实验收，PLAN-GATE 批准 `plans/v001` 后冻结 45 文件并执行；实际模型 `openai-codex:gpt-6.1-sol`，各 trial 均有真实 sessionId／SDK 事件，非 ControlledRuntime。
+- 实际完成 10 个真实模型 trial＋1 个边界元用例评分，执行层结果均为 FAIL；SS2-06 预算、SS2-08 公网、SS2-14 UI 为 NOT_RUN。主要失败为候选与覆盖不足、自主纠错链缺失、取消／重启状态断言及 held-out 数值断言失败，详见 `projects/EVAL-2026-001-sentiscope-slice2/runs/run-001/execution-return.md`。
+- 真实公网未调用；用户指示跳过后，没有将该用例标为 PASS。用量汇总 456,348 tokens（含 cacheRead），`cost_total=0.3373904` 且 `currency=UNKNOWN`。
+- 墙钟达到 9.0h 超过原定 8.0h，用户选择“不再继续”，未追加审核时间；流程 `aborted`，无独立 REVIEW／CONVERGE／最终套件判定，不签发验收通过或完成结论。中止记录见 `projects/EVAL-2026-001-sentiscope-slice2/closeout.md`。
+
+## 2026-11-01 公网获取范围修订
+
+- 用户决定切片二公网获取改为 **deepresearch 模式公网搜索**：Agent 自主调用 `web_search`，从命中中选择少量 URL `fetch_page`，用 `read_snapshot` 分页核对原文；暂不做爬虫、站点遍历或链接批量抓取。
+- 仅参考 `/Users/huangbo/Dev/Projects/deep-research` 的检索架构与安全边界，不复制产品、代码、Provider 凭据或报告流程。
+- 上位方案升级为 [整体产品方案 v0.3](../../docs/SentiScope_整体产品方案_v0.3.md)；本规格改为受控搜索工具链目标。此前候选 `51e3125` 的单 URL 抓取实现与真实验收 FAIL 历史保留，不得在该候选上直接宣称符合新范围。
+- 后续实施须退出当前 `public-web` 单 URL API 与 `sentiscope_public_fetch`，重构 Provider 链与三工具；EVAL-2026-001 的失败记录与本节范围修订均不可删除。
+
+## 2026-11-01 deepresearch 搜索模式本地受控实施
+
+- 新增 `src/source/web-research.ts`：通用 HTTP Search Provider 适配器（仅 https 端点、10s 超时、响应体上限、密钥只经环境变量）、Provider 链瞬时错误切换并记录 attempts、`WebResearchService` 的 `search`／`fetch_page`／`read_snapshot`／`record_web_fact`、搜索／抓取／快照读取配额以错误值返回并提示收束、来源分级（优先域＞gov/edu＞org/int＞其他）、快照不可变与逐字引用校验、搜索词与 URL 的出口阻断。
+- 退出旧单 URL 爬虫：删除 `fetchPublicSnapshot`／`publicTableToRawRows`／`PublicTableMapping`、`/api/public-sources` 与映射解析、`sentiscope_public_fetch`、`SENTISCOPE_PUBLIC_WEB`／`SENTISCOPE_PUBLIC_HOSTS` 与 UI 的 URL prompt 链；`public-web.ts` 仅保留 SSRF／robots／传输原语供检索服务复用。
+- Host 校验失败以错误值回到 Agent（`researchCall`），并写 `research_error` 运行事件；配额耗尽、Provider 未配置、SSRF／robots／大小／内容类型／引用校验失败均不再把整轮运行写成失败或成功伪造。
+- 外部数字资格由 Host 交叉核验：声明 `publishedAt` 与快照解析的 `<time datetime>` 冲突即拒绝；C 级来源一律按二手来源记录并打 `tier_c_source`；候选的外部基准若只来自 1 个搜索快照，由 Host 写入结构化 `singleSourceLimitation` 并在 UI 展示（WEB-06 单源限制分支）。
+- 演示与验收替身：`demo.ts` 提供本地 fixture Provider／传输（不出网），qualified 演示真实走通搜索→快照→外部数字→四类比较→候选；新增 zero 与 limited（配额耗尽、PDF 被拒、待补证保留）两种演示模式；`maxToolCalls` 成为 Host 选项（默认 25，本机试用 40）。
+- UI：来源视图新增搜索事件、命中与放弃 URL、快照卡片与配额边界；探索视图新增搜索配额横幅与搜索轨迹；候选详情展示 Host 标注的单源限制；证据下钻改为快照原文窗口（`/api/snapshots/:id/text`），删除表格行定位的爬虫式下钻。
+- 验证：`npm run check` 54/54 通过（新增 WEB 搜索链、错误值化、单源限制、配额事件、fixture 演示等用例），`npm audit` 0 漏洞；浏览器在临时数据目录验证候选看板、探索搜索轨迹、来源搜索面、快照原文下钻、limited 与 zero 运行，无控制台错误；未调用真实模型与真实公网。
+- 独立复核（非作者，2026-11-01）第一轮 **REJECT**：H-1 外部事实门禁采信模型自述 `publishedAt`／`sourceType` 而未与 Host 已解析快照信号交叉核验；H-2 WEB-06 单快照分支无降级或强制标注；另列 M-1 Provider 切换不留痕、M-2 HTTP Provider 无超时／scheme／大小限制、L-1～L-5。阻断与中等级项均已修复并补测试；第二轮聚焦复核 **PASS**（54/54 测试、typecheck 干净，确认无 Host 越权编排、无失败伪装成功、配额语义未破坏）。
+- 复核残留（低，不阻断，记录为后续候选改进项）：N-3 搜索响应 1MB 上限为事后校验、无流式截断；N-4 被阻断／配额拒绝事件的 callKey 可与下一次真实调用重复（事件 id 仍唯一）。N-1（无 `<time>` 快照的发布时间不可核验）已以 `published_at_unverified` issue 标注，N-2（全链失败事件带 attempts）与 N-5（fetch/read 配额事件断言）已修复补测。
+- 其他记录：L-4 为切片一规格文件仅链接更新（v0.2→v0.3 改名指针，未改写切片一验收结论）；L-5 为未跟踪的 `.qoder/repowiki` 生成卡片仍描述旧单 URL 链路（非交付物，待重新生成）。
+
 ## Host 与 Agent 职责边界及复用检查（2026-10-31）
 
 - 已按工程规范 §4 完成实际代码、调用链、SDK 文档与受控运行记录检查，正式记录见 [boundary-review.md](boundary-review.md)，原始证据位于被忽略的 `.local/slice2-boundary-review/`（startup.log、health.json、runs.json、candidates.json）。
@@ -45,4 +72,4 @@
 
 ## 用户验收
 
-- 未开始。需要用户确认本机合成候选质量与 UI，并分别授权真实模型（模型、预算、可发送字段）与真实公网白名单／映射后，才能执行切片二规格剩余验收。
+- 未开始。需要用户确认本机合成候选质量与 UI，并分别授权真实模型（模型、预算、可发送字段）与真实搜索 Provider（密钥环境、配额、偏好来源）后，才能执行切片二规格剩余验收。
