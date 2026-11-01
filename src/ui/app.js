@@ -200,7 +200,8 @@ function renderRun(detail) {
   $('activity-list').innerHTML = run.events.map(event => `<li><time class="activity-time">${escapeHtml(event.at.slice(11,19))}</time><div><div class="activity-title"><span class="tool-pill">${escapeHtml(event.type)}</span>${escapeHtml(event.summary)}</div><div class="activity-detail">${escapeHtml(JSON.stringify(event.details || {}))}</div></div></li>`).join('');
   $('stop-reason').textContent = `${run.status} · ${run.stopReason}`;
   const banner = document.querySelector('#view-exploration .context-banner');
-  banner.innerHTML = `<b>${escapeHtml(run.datasetId)}</b><span>模型：${escapeHtml(run.model)}</span><span>工具预算：${run.budget.usedToolCalls} / ${run.budget.maxToolCalls}</span><span>搜索 ${run.budget.usedSearches}／${run.budget.maxSearches} · 抓取 ${run.budget.usedFetches}／${run.budget.maxFetches} · 读取 ${run.budget.usedSnapshotReads}／${run.budget.maxSnapshotReads}</span><span>状态：${escapeHtml(run.status)}</span>`;
+  const budget = { maxSearches:0, maxFetches:0, maxSnapshotReads:0, usedSearches:0, usedFetches:0, usedSnapshotReads:0, ...run.budget };
+  banner.innerHTML = `<b>${escapeHtml(run.datasetId)}</b><span>模型：${escapeHtml(run.model)}</span><span>工具预算：${run.budget.usedToolCalls} / ${run.budget.maxToolCalls}</span><span>搜索 ${budget.usedSearches}／${budget.maxSearches} · 抓取 ${budget.usedFetches}／${budget.maxFetches} · 读取 ${budget.usedSnapshotReads}／${budget.maxSnapshotReads}</span><span>状态：${escapeHtml(run.status)}</span>`;
   document.querySelector('.activity-head span').textContent = `运行 ${run.id} · ${run.status}`;
   renderSearchTrace(detail.searchEvents ?? [], detail.snapshots ?? []);
 }

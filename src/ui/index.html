@@ -60,7 +60,8 @@
   .eyebrow { color:var(--muted); font-size:11px; margin-bottom:3px; }
   h1 { font-size:25px; line-height:1.25; font-weight:600; letter-spacing:-.025em; }
   .page-desc { max-width:760px; margin-top:6px; color:var(--muted); font-size:12px; }
-  .page-actions { margin-left:auto; display:flex; gap:8px; }
+  .page-actions { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; }
+  .page-actions .btn { white-space:nowrap; }
   .btn { min-height:36px; padding:7px 14px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--ink); font-size:13px; }
   .btn:hover { background:var(--hover); }
   .btn.primary { border-color:var(--accent); background:var(--accent); color:var(--canvas); }
@@ -122,7 +123,7 @@
   .file-list li { padding:11px 0; border-top:1px solid var(--border); }
   .file-name { font-size:12px; font-weight:550; overflow-wrap:anywhere; }
   .file-meta { color:var(--muted); font-size:10px; margin-top:3px; }
-  .workspace { max-width:850px; margin:0 auto; padding:24px 28px 40px; }
+  .workspace { margin:0; padding:24px 28px 40px; }
   .context-banner { display:flex; gap:10px; align-items:center; margin-bottom:16px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--subtle); color:var(--muted); font-size:11px; flex-wrap:wrap; }
   .context-banner b { color:var(--ink); font-weight:550; }
   .run-summary { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:18px; }
@@ -344,7 +345,6 @@
       </aside>
     </div>
   </div>
-</div>
 
 <dialog class="candidate-dialog" id="candidate-dialog" aria-labelledby="dialog-title">
   <div class="dialog-shell">
@@ -355,6 +355,7 @@
   </div>
 </dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</div>
 
 <script src="/app.js"></script>
 </body>
