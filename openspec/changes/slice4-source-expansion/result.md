@@ -25,4 +25,4 @@
 
 ## Git
 
-- 未提交；待独立复核与用户确认后提交、CI、合并。
+- 2026-11-01 分支 `work/qoder/slice4-source-expansion` 提交 `0ed3a88`；分支 CI run `41295483202` success；PR #4 squash 合并 main（提交 `7ae27b1`），main CI run `41295661823` success。
