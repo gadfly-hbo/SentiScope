@@ -194,7 +194,7 @@ test('WEB-04：robots 禁止、非 HTML、超过大小均 fail-closed', async ()
   const store = new WorkspaceStore(mkdtempSync(join(tmpdir(), 'sentiscope-research-')));
   const robotsDenied = service(store, undefined, { transport: async (url: URL) => url.pathname === '/robots.txt' ? response(Buffer.from('User-agent: *\nDisallow: /')) : response(page('<p>x</p>')) });
   await assert.rejects(robotsDenied.fetchPage('run-fail', 'https://example.com/report', 'call-fetch-1'), /robots_rejected/);
-  const wrongType = service(store, undefined, { transport: async (url: URL) => url.pathname === '/robots.txt' ? response(Buffer.from('')) : response(page('<p>x</p>'), { headers: { 'content-type': 'application/pdf' } }) });
+  const wrongType = service(store, undefined, { transport: async (url: URL) => url.pathname === '/robots.txt' ? response(Buffer.from('')) : response(page('<p>x</p>'), { headers: { 'content-type': 'image/png' } }) });
   await assert.rejects(wrongType.fetchPage('run-fail', 'https://example.com/report.pdf', 'call-fetch-2'), /content_type_rejected/);
   const tooLarge = service(store, undefined, { maxBytes: 8, transport: async (url: URL) => url.pathname === '/robots.txt' ? response(Buffer.from('')) : response(page('<p>x</p>')) });
   await assert.rejects(tooLarge.fetchPage('run-fail', 'https://example.com/report', 'call-fetch-3'), /too_large/);

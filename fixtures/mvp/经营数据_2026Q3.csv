@@ -1,4 +1,5 @@
 metric,entity,period,value,unit,closed,comparable,label,scope,currency,region
+revenue,华东,2026-08,1010,万元,true,true,华东上月收入,经营收入,CNY,华东
 revenue,华东,2026-09,880,万元,true,true,华东月收入,经营收入,CNY,华东
 revenue.target,华东,2026-09,1000,万元,true,true,内部目标,经营收入,CNY,华东
 revenue,西南,2026-09,938,万元,true,true,西南月收入,经营收入,CNY,西南

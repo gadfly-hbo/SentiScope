@@ -1,4 +1,4 @@
-export type ComparisonType = 'target' | 'history' | 'competitor' | 'industry';
+export type ComparisonType = 'target' | 'history' | 'competitor' | 'industry' | 'mom' | 'peer';
 export type CandidateStatus = 'review' | 'retained' | 'excluded';
 export type QualityState = 'usable' | 'blocked' | 'needs_evidence';
 
@@ -201,6 +201,7 @@ export type WebSnapshotRecord = {
   text: string;
   excerpt: string;
   parseStatus: 'parsed' | 'needs_review';
+  pdfPages?: { count: number; offsets: number[] };
 };
 
 export type SnapshotReadRecord = {

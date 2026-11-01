@@ -1,5 +1,5 @@
 const STATUS = { review:{label:'待复核'}, retained:{label:'已保留'}, excluded:{label:'已排除'} };
-const TYPES = { target:'目标差距', history:'历史差距', competitor:'竞对差距', industry:'行业差距' };
+const TYPES = { target:'目标差距', history:'历史差距', competitor:'竞对差距', industry:'行业差距', mom:'环比差距', peer:'同级对比' };
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g,char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 let candidates = [], datasets = [], sources = [], runs = [], currentDataset = null, currentRun = null;
@@ -129,7 +129,7 @@ async function openEvidence(index) {
         if (quote) {
           const payload = await api(`/api/snapshots/${quote[1]}/text?offset=${quote[2]}&length=${Math.max(1, Number(quote[3]) - Number(quote[2]))}`);
           const text = document.createElement('p'); text.className = 'source-meta evidence-drill';
-          text.innerHTML = `快照原文窗口（${payload.text.length} 字）：<mark>${escapeHtml(payload.text)}</mark>`;
+          text.innerHTML = `快照原文窗口（${payload.page ? `第 ${payload.page} 页 · ` : ''}${payload.text.length} 字）：<mark>${escapeHtml(payload.text)}</mark>`;
           detail.append(text);
         }
       }
@@ -189,7 +189,7 @@ function renderSources() {
   const files = sources.filter(asset => asset.kind !== 'web');
   $('asset-list').innerHTML = [
     files.map(asset => `<article class="source-card" data-source-sha="${asset.sha256}"><div><div class="source-kind">用户文件</div><h2>${escapeHtml(asset.name)}</h2><div class="source-meta">导入 ${escapeHtml(asset.importedAt)} · ${asset.bytes} 字节 · sha256:${escapeHtml(asset.sha256.slice(0,16))}…</div><details class="snapshot-detail"><summary>查看来源定位与原始证据</summary><p>${escapeHtml(asset.locator)}</p><p><a class="btn small" href="/api/evidence/${asset.sha256}" download>下载原始证据</a></p></details></div><div class="source-status">原始字节已保存<br>${escapeHtml(asset.mediaType)}</div></article>`).join(''),
-    snapshots.map(snapshot => `<article class="source-card" data-snapshot-id="${snapshot.id}" data-source-sha="${snapshot.assetSha256}"><div><div class="source-kind">搜索快照 · 等级 ${escapeHtml(snapshot.sourceTier)}</div><h2>${escapeHtml(snapshot.title)}</h2><div class="source-meta">${escapeHtml(snapshot.finalUrl || snapshot.url)}<br>发布 ${escapeHtml(snapshot.publishedAt || '未知')} · 抓取 ${escapeHtml(snapshot.capturedAt)} · callKey=${escapeHtml(snapshot.callKey)} · 解析 ${escapeHtml(snapshot.parseStatus)} · 运行 ${escapeHtml(snapshot.runId)}</div><details class="snapshot-detail"><summary>查看快照摘要与原文</summary><p>${escapeHtml(snapshot.excerpt)}</p><p>读取 ${snapshotReads.filter(read => read.snapshotId === snapshot.id).length} 次 · 全文 ${escapeHtml(String(snapshot.excerpt.length))}+ 字 · <a class="btn small" href="/api/evidence/${snapshot.assetSha256}" download>下载原始字节</a></p></details></div><div class="source-status">原始字节已保存<br>${escapeHtml(snapshot.contentType)}</div></article>`).join(''),
+    snapshots.map(snapshot => `<article class="source-card" data-snapshot-id="${snapshot.id}" data-source-sha="${snapshot.assetSha256}"><div><div class="source-kind">搜索快照 · 等级 ${escapeHtml(snapshot.sourceTier)}</div><h2>${escapeHtml(snapshot.title)}</h2><div class="source-meta">${escapeHtml(snapshot.finalUrl || snapshot.url)}<br>发布 ${escapeHtml(snapshot.publishedAt || '未知')} · 抓取 ${escapeHtml(snapshot.capturedAt)} · callKey=${escapeHtml(snapshot.callKey)} · 解析 ${escapeHtml(snapshot.parseStatus)} · 运行 ${escapeHtml(snapshot.runId)}</div><details class="snapshot-detail"><summary>查看快照摘要与原文</summary><p>${escapeHtml(snapshot.excerpt)}</p><p>读取 ${snapshotReads.filter(read => read.snapshotId === snapshot.id).length} 次 · 全文 ${escapeHtml(String(snapshot.excerpt.length))}+ 字 · <a class="btn small" href="/api/evidence/${snapshot.assetSha256}" download>下载原始字节</a></p></details></div><div class="source-status">原始字节已保存<br>${snapshot.contentType.includes('pdf') ? `PDF · 文本层 · ${snapshot.pdfPages?.count ?? '?'} 页` : escapeHtml(snapshot.contentType)}</div></article>`).join(''),
   ].join('') || '<div class="empty-state">尚无来源资产。</div>';
   $('file-list').innerHTML = [
     ...files.map(asset => `<li><div class="file-name">${escapeHtml(asset.name)}</div><div class="file-meta">用户文件 · ${escapeHtml(asset.sha256.slice(0,12))}…</div></li>`),
@@ -253,6 +253,8 @@ async function loadTrial() {
   $('trial-summary').innerHTML = `<div class="summary-item"><strong>${trialStats.hitRate ?? '—'}${trialStats.hitRate != null ? '%' : ''}</strong><span>候选命中率（保留 ÷ 已裁定 ${decided}）</span></div><div class="summary-item"><strong>${trialStats.candidates.total}</strong><span>候选 · 待复核 ${trialStats.candidates.review} · 排除 ${trialStats.candidates.excluded}</span></div><div class="summary-item"><strong>${trialStats.runs.length}</strong><span>运行 · ${new Set(trialStats.runs.map(run => run.datasetId)).size} 个数据集</span></div><div class="summary-item"><strong>${Math.round(cost / 100) / 10}k tok</strong><span>累计 token${costTotal != null ? ` · 费用 ${Math.round(costTotal * 1e6) / 1e6}` : ' · 费用不可得'}</span></div>`;
   const reasons = Object.entries(trialStats.exclusionReasons);
   $('trial-reasons').innerHTML = reasons.length ? reasons.map(([reason, count]) => `<span class="reason-chip">${escapeHtml(reason)} ×${count}</span>`).join('') : '<span class="muted" style="font-size:12px">暂无排除记录。</span>';
+  const types = Object.entries(trialStats.byType);
+  $('trial-bytype').innerHTML = types.length ? types.map(([type, counts]) => `<span class="reason-chip">${TYPES[type] ?? type} ${counts.review + counts.retained + counts.excluded}（排除 ${counts.excluded}）</span>`).join('') : '<span class="muted" style="font-size:12px">暂无候选。</span>';
   const datasetsSeen = [...new Set(trialStats.runs.map(run => `${run.datasetId}|${run.datasetName ?? run.datasetId}`))];
   $('trial-dataset-filter').innerHTML = `<option value="all">全部数据集（${datasetsSeen.length}）</option>${datasetsSeen.map(([id, name]) => `<option value="${id}">${escapeHtml(String(name))}</option>`).join('')}`;
   renderTrialRuns();
@@ -341,5 +343,5 @@ window.addEventListener('resize',syncSidebarState); syncSidebarState();
 $('candidate-board').innerHTML = '<div class="empty-state">正在加载本机工作区…</div>';
 $('asset-list').innerHTML = ''; $('search-event-list').innerHTML = '';
 document.querySelector('#view-datasets .dataset-grid').innerHTML = '';
-$('activity-list').innerHTML = ''; $('run-summary').innerHTML = ''; $('trial-summary').innerHTML = ''; $('trial-runs-body').innerHTML = ''; $('trial-config').innerHTML = ''; $('trial-reasons').innerHTML = '';
+$('activity-list').innerHTML = ''; $('run-summary').innerHTML = ''; $('trial-summary').innerHTML = ''; $('trial-runs-body').innerHTML = ''; $('trial-config').innerHTML = ''; $('trial-reasons').innerHTML = ''; $('trial-bytype').innerHTML = '';
 Promise.all([loadCandidates(),loadDatasets(),loadSources(),loadRuns(),loadTrial()]).catch(error => toast(`工作区加载失败：${error.message}`));

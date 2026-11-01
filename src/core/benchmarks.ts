@@ -11,7 +11,7 @@ export type BenchmarkDefinition = {
   actualEntity?: string;
   benchmarkMetric: string;
   benchmarkEntity?: string;
-  periodRule: 'same' | 'previous-year';
+  periodRule: 'same' | 'previous-year' | 'previous-period';
   label: string;
 };
 
@@ -34,6 +34,8 @@ const DEFAULTS: BenchmarkDefinition[] = [
   { id: 'growth-competitor', comparisonType: 'competitor', direction: 'higher-better', threshold: 8, thresholdVersion: 'growth-competitor@v1', actualMetric: 'revenue', actualEntity: '自身', benchmarkMetric: 'revenue', benchmarkEntity: '竞对A', periodRule: 'same', label: '竞对A公开披露' },
   { id: 'growth-industry', comparisonType: 'industry', direction: 'higher-better', threshold: 8, thresholdVersion: 'growth-industry@v1', actualMetric: 'revenue', actualEntity: '自身', benchmarkMetric: 'revenue', benchmarkEntity: '行业', periodRule: 'same', label: '行业公开统计' },
   { id: 'wait-target', comparisonType: 'target', direction: 'lower-better', threshold: 20, thresholdVersion: 'wait-target@v1', actualMetric: 'support.wait_seconds', benchmarkMetric: 'support.target', periodRule: 'same', label: '目标等待时长' },
+  { id: 'revenue-mom', comparisonType: 'mom', direction: 'higher-better', threshold: 8, thresholdVersion: 'revenue-mom@v1', actualMetric: 'revenue', benchmarkMetric: 'revenue', periodRule: 'previous-period', label: '上一期' },
+  { id: 'entity-peer', comparisonType: 'peer', direction: 'higher-better', threshold: 20, thresholdVersion: 'entity-peer@v1', actualMetric: 'revenue', benchmarkMetric: 'revenue', periodRule: 'same', label: '同级实体' },
 ];
 
 const DEFINITIONS: BenchmarkDefinition[] = DEFAULTS.map(item => ({ ...item }));
@@ -115,4 +117,22 @@ export function isPreviousYear(actualPeriod: string, benchmarkPeriod: string): b
   const actual = /^(\d{4})(.*)$/.exec(actualPeriod);
   const benchmark = /^(\d{4})(.*)$/.exec(benchmarkPeriod);
   return Boolean(actual && benchmark && Number(actual[1]) - Number(benchmark[1]) === 1 && actual[2] === benchmark[2]);
+}
+
+export function isPreviousPeriod(actualPeriod: string, benchmarkPeriod: string): boolean {
+  const month = /^(\d{4})-(\d{2})$/.exec(actualPeriod);
+  const benchmarkMonth = /^(\d{4})-(\d{2})$/.exec(benchmarkPeriod);
+  if (month && benchmarkMonth) {
+    const actualValue = Number(month[1]) * 12 + Number(month[2]);
+    const benchmarkValue = Number(benchmarkMonth[1]) * 12 + Number(benchmarkMonth[2]);
+    return actualValue - benchmarkValue === 1;
+  }
+  const quarter = /^(\d{4})Q([1-4])$/.exec(actualPeriod);
+  const benchmarkQuarter = /^(\d{4})Q([1-4])$/.exec(benchmarkPeriod);
+  if (quarter && benchmarkQuarter) {
+    const actualValue = Number(quarter[1]) * 4 + Number(quarter[2]);
+    const benchmarkValue = Number(benchmarkQuarter[1]) * 4 + Number(benchmarkQuarter[2]);
+    return actualValue - benchmarkValue === 1;
+  }
+  return false;
 }

@@ -1,7 +1,7 @@
 import { compareDescriptive } from '../core/comparison.ts';
 import { createCandidate } from '../core/candidates.ts';
 import { standardizeDataset } from '../core/cleaning.ts';
-import { getBenchmarkDefinition, isPreviousYear } from '../core/benchmarks.ts';
+import { getBenchmarkDefinition, isPreviousPeriod, isPreviousYear } from '../core/benchmarks.ts';
 import type { CaseCandidate, ComparisonResult, DatasetVersion, EvidenceRef, ExplorationRun, Observation, QualityState, StandardRow } from '../core/mvp-types.ts';
 import type { WorkspaceStore } from '../core/workspace-store.ts';
 import { WebResearchError, type WebFactInput, type WebResearchService } from '../source/web-research.ts';
@@ -164,6 +164,7 @@ export async function runExploration(options: RunOptions): Promise<ExplorationRu
     compare: async request => {
       charge('comparison', `执行基准 ${request.definitionId} 描述性比较`);
       const definition = getBenchmarkDefinition(request.definitionId);
+      if (definition.comparisonType === 'peer' && request.selectionContext.trim().length < 20) throw new Error('peer_selection_context_required：同级对比必须在 selectionContext 写明选择理由（不少于 20 字，说明为何选该同级实体、口径是否一致）');
       const actual = requiredRow(workingDataset, request.actualRowId);
       const benchmark = requiredRow(workingDataset, request.benchmarkRowId);
       const actualPrevious = request.actualPreviousRowId ? requiredRow(workingDataset, request.actualPreviousRowId) : undefined;
@@ -281,8 +282,12 @@ function validateRows(definition: ReturnType<typeof getBenchmarkDefinition>, act
   const rows = [actual, benchmark, actualPrevious, benchmarkPrevious].filter((row): row is StandardRow => Boolean(row));
   const metricScope = actual.metricId === definition.actualMetric && benchmark.metricId === definition.benchmarkMetric;
   const entityScope = definition.actualEntity ? actual.entity === definition.actualEntity : true;
-  const benchmarkEntityScope = definition.benchmarkEntity ? benchmark.entity === definition.benchmarkEntity : actual.entity === benchmark.entity;
-  const periodScope = definition.periodRule === 'same' ? actual.period === benchmark.period : isPreviousYear(actual.period, benchmark.period);
+  const benchmarkEntityScope = definition.comparisonType === 'peer'
+    ? benchmark.entity !== actual.entity
+    : definition.benchmarkEntity ? benchmark.entity === definition.benchmarkEntity : actual.entity === benchmark.entity;
+  const periodScope = definition.periodRule === 'same' ? actual.period === benchmark.period
+    : definition.periodRule === 'previous-period' ? isPreviousPeriod(actual.period, benchmark.period)
+      : isPreviousYear(actual.period, benchmark.period);
   const sharedScope = ['scope', 'currency', 'region'].every(key => Boolean(actual.dimensions[key]) && rows.every(row => row.dimensions[key] === actual.dimensions[key]));
   const previousScope = !actualPrevious || (actualPrevious.metricId === actual.metricId && actualPrevious.entity === actual.entity && actualPrevious.unit === actual.unit && isPreviousYear(actual.period, actualPrevious.period));
   const benchmarkPreviousScope = !benchmarkPrevious || (benchmarkPrevious.metricId === benchmark.metricId && benchmarkPrevious.entity === benchmark.entity && benchmarkPrevious.unit === benchmark.unit && isPreviousYear(actual.period, benchmarkPrevious.period));

@@ -8,7 +8,7 @@ export function compareDescriptive(input: ComparisonInput): ComparisonResult {
   const gapRate = !growthGap && canUseRate ? round(gap / Math.abs(input.benchmark) * 100) : null;
   const directionGap = input.direction === 'higher-better' ? -gap : gap;
   const score = growthGap ? directionGap : gapRate == null ? null : input.direction === 'higher-better' ? -gapRate : gapRate;
-  const periodComparable = input.comparisonType === 'history' || !input.benchmarkPeriod || input.benchmarkPeriod === input.period;
+  const periodComparable = input.comparisonType === 'history' || input.comparisonType === 'mom' || !input.benchmarkPeriod || input.benchmarkPeriod === input.period;
   const comparable = input.comparable && input.periodClosed && periodComparable && input.evidence.length > 0 && input.selectionContext.trim().length > 0;
   const rateRequired = !growthGap && !canUseRate;
   const qualified = comparable && !rateRequired && score != null && score > input.threshold;

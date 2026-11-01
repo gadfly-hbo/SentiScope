@@ -257,7 +257,13 @@ export async function startHost(options: HostOptions): Promise<StartedHost> {
         const requestedLength = Number(url.searchParams.get('length') ?? 600);
         const offset = Number.isFinite(requestedOffset) && requestedOffset > 0 ? Math.floor(requestedOffset) : 0;
         const length = Number.isFinite(requestedLength) && requestedLength > 0 ? Math.min(6000, Math.floor(requestedLength)) : 600;
-        return send(200, { snapshotId: snapshot.id, offset, length, text: snapshot.text.slice(offset, offset + length), totalLength: snapshot.text.length });
+        let page: number | undefined;
+        if (snapshot.pdfPages) {
+          let index = 0;
+          snapshot.pdfPages.offsets.forEach((start, position) => { if (offset >= start) index = position; });
+          page = index + 1;
+        }
+        return send(200, { snapshotId: snapshot.id, offset, length, text: snapshot.text.slice(offset, offset + length), totalLength: snapshot.text.length, ...(page ? { page } : {}) });
       }
       const evidenceMatch = /^\/api\/evidence\/([a-f0-9]{64})$/.exec(url.pathname);
       if (evidenceMatch && method === 'GET') {

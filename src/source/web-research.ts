@@ -274,26 +274,38 @@ export class WebResearchService {
     const result = await secureGet(url, [], this.lookup, this.transport, this.maxBytes, this.timeoutMs, true);
     if (result.response.status !== 200) throw new WebError('http_error');
     const contentType = result.response.headers['content-type'] ?? '';
-    if (contentType && !/text\/html|application\/xhtml\+xml/i.test(contentType)) throw new WebError('content_type_rejected');
+    const isPdf = /application\/pdf/i.test(contentType);
+    if (contentType && !isPdf && !/text\/html|application\/xhtml\+xml/i.test(contentType)) throw new WebError('content_type_rejected');
     this.used.fetches += 1;
     this.attempts.fetches += 1;
     const capturedAt = this.now();
-    const html = result.response.body.toString('utf8');
-    const document = parse(html);
-    const title = document.querySelector('title')?.text.trim() || result.url.hostname;
-    const publishedAt = document.querySelector('time')?.getAttribute('datetime') ?? null;
-    const text = normalize(document.text);
-    const stored = storeRawBytes(this.rootDir, result.response.body, 'html');
+    let title: string;
+    let publishedAt: string | null = null;
+    let text: string;
+    let pdfPages: WebSnapshotRecord['pdfPages'];
+    let parser = 'node-html-parser@v1';
+    if (isPdf) {
+      const parsed = await parsePdfText(result.response.body);
+      text = parsed.text; pdfPages = parsed.pdfPages; parser = 'unpdf@2';
+      try { title = decodeURIComponent(result.url.pathname.split('/').pop() ?? '').replace(/\.pdf$/i, '') || result.url.hostname; }
+      catch { title = result.url.hostname; }
+    } else {
+      const document = parse(result.response.body.toString('utf8'));
+      title = document.querySelector('title')?.text.trim() || result.url.hostname;
+      publishedAt = document.querySelector('time')?.getAttribute('datetime') ?? null;
+      text = normalize(document.text);
+    }
+    const stored = storeRawBytes(this.rootDir, result.response.body, isPdf ? 'pdf' : 'html');
     const sourceTier = tierOfSource(result.url.hostname, this.preferredDomains);
     const snapshotId = `snap-${createHash('sha256').update(`${runId}:${result.url}:${callKey}`).digest('hex').slice(0, 16)}`;
     const asset: SourceAsset = {
       id: `asset-${stored.sha256.slice(0, 16)}`, kind: 'web', name: title, sha256: stored.sha256, mediaType: contentType || 'text/html',
       bytes: result.response.body.length, importedAt: capturedAt, publishedAt, capturedAt, locator: result.url.toString(), path: stored.path,
-      metadata: { snapshotId, finalUrl: result.url.toString(), sourceTier, callKey, parser: 'node-html-parser@v1' },
+      metadata: { snapshotId, finalUrl: result.url.toString(), sourceTier, callKey, parser },
     };
     const snapshot: WebSnapshotRecord = {
       id: snapshotId, runId, assetId: asset.id, assetSha256: stored.sha256, url: rawUrl, finalUrl: result.url.toString(), title, publishedAt, capturedAt,
-      contentType: contentType || 'text/html', sourceTier, callKey, text, excerpt: text.slice(0, 6000), parseStatus: 'parsed',
+      contentType: contentType || 'text/html', sourceTier, callKey, text, excerpt: text.slice(0, 6000), parseStatus: 'parsed', ...(pdfPages ? { pdfPages } : {}),
     };
     this.store.insertAsset(asset);
     this.store.insertSnapshot(snapshot);
@@ -376,6 +388,31 @@ export class WebResearchService {
 
 function safeHostname(raw: string): string {
   try { return new URL(raw).hostname; } catch { return ''; }
+}
+
+const MAX_PDF_PAGES = 60;
+
+async function parsePdfText(body: Buffer): Promise<{ text: string; pdfPages: { count: number; offsets: number[] } }> {
+  const { getDocumentProxy, extractText } = await import('unpdf');
+  let pages: string[];
+  let count: number;
+  try {
+    const proxy = await getDocumentProxy(new Uint8Array(body));
+    count = proxy.numPages;
+    if (!Number.isFinite(count) || count > MAX_PDF_PAGES) throw new WebError('pdf_too_large');
+    const extracted = await extractText(proxy, { mergePages: false }) as unknown as { totalPages: number; text: string[] };
+    pages = extracted.text.map(page => normalize(page));
+    count = extracted.totalPages;
+  } catch (error) {
+    if (error instanceof WebError) throw error;
+    throw new WebError('pdf_parse_failed');
+  }
+    if (!Number.isFinite(count) || count > MAX_PDF_PAGES) throw new WebError('pdf_too_large');
+  if (!pages.some(page => page.trim())) throw new WebError('pdf_no_text_layer');
+  const offsets: number[] = [];
+  let position = 0;
+  for (const page of pages) { offsets.push(position); position += page.length + 1; }
+  return { text: pages.join('\n'), pdfPages: { count, offsets } };
 }
 
 function tierOfSource(hostname: string, preferredDomains?: Set<string>): SourceTier {
