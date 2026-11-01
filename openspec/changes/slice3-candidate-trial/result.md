@@ -32,4 +32,4 @@
 
 ## Git
 
-- 未提交；待独立复核与用户确认后按流程提交、CI、合并。
+- 2026-11-01 分支 `work/qoder/slice3-candidate-trial` 提交 `7d8357d`；分支 CI run `41290960615` success；PR #3 squash 合并 main（提交 `adf793b`），main CI run `41291096377` success。本地已切回 main。
